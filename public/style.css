@@ -1,0 +1,352 @@
+/* ==================== 全局重置 ==================== */
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body {
+  width:100%; height:100%; overflow:hidden;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  background:#1a1a2e; color:#eee;
+  user-select:none; -webkit-user-select:none;
+}
+input, button { font-family:inherit; }
+input:focus, button:focus { outline:3px solid #e94560; }
+button { cursor:pointer; border:none; border-radius:10px; padding:14px 28px; font-size:20px; }
+.hidden { display:none !important; }
+.error-msg { color:#ff6b6b; font-size:18px; margin-top:12px; }
+
+/* ==================== 入口页 ==================== */
+#page-entry {
+  display:flex; align-items:center; justify-content:center;
+  height:100%; background:linear-gradient(135deg,#1a1a2e,#16213e,#0f3460);
+}
+.entry-container {
+  text-align:center; padding:50px; max-width:600px; width:90%;
+}
+.game-title { font-size:72px; margin-bottom:10px; text-shadow:0 0 30px rgba(233,69,96,0.5); }
+.subtitle { color:#999; margin-bottom:40px; font-size:22px; }
+.entry-container input {
+  display:block; width:100%; padding:18px; margin-bottom:16px;
+  border:2px solid #444; border-radius:12px; background:#2a2a3e; color:#eee; font-size:22px;
+}
+.entry-buttons { display:flex; gap:14px; margin-bottom:16px; }
+.entry-buttons button {
+  flex:1; padding:20px; font-size:22px; font-weight:bold;
+  background:#e94560; color:white; border-radius:14px; transition:transform .15s;
+}
+.entry-buttons button:hover { transform:scale(1.03); }
+.entry-buttons button:active { transform:scale(0.97); }
+#entry-join-fields input { font-size:20px; }
+#entry-join-fields .entry-buttons { margin-top:12px; }
+#entry-join-fields .entry-buttons button { font-size:18px; padding:14px; }
+#btn-join-back { background:#555; color:white; }
+
+/* ==================== 大厅 ==================== */
+#page-lobby { display:flex; flex-direction:column; height:100%; }
+.lobby-header {
+  display:flex; justify-content:space-between; align-items:center;
+  padding:18px 30px; background:#16213e; border-bottom:2px solid #333;
+  font-size:18px; color:#aaa;
+}
+.lobby-body { display:flex; flex:1; padding:30px; gap:30px; overflow:hidden; }
+.lobby-left { flex:0 0 300px; }
+.lobby-left h3, .lobby-center h3 { margin-bottom:16px; font-size:24px; }
+#player-list { list-style:none; }
+#player-list li {
+  padding:12px 18px; margin-bottom:6px; background:#2a2a3e; border-radius:10px;
+  display:flex; align-items:center; gap:10px; font-size:18px;
+}
+.owner-badge { background:#e94560; color:white; font-size:14px; padding:4px 10px; border-radius:6px; }
+.lobby-center { flex:1; }
+.setting-row { margin-bottom:24px; }
+.setting-row label { display:block; margin-bottom:8px; font-size:20px; }
+.setting-row input[type="range"] { width:100%; accent-color:#e94560; height:24px; }
+
+/* ==================== 游戏界面 ==================== */
+#page-game { display:flex; flex-direction:column; height:100%; overflow-y:auto; padding-bottom:60px; }
+#game-header {
+  display:flex; justify-content:space-between; align-items:center;
+  padding:16px 28px; background:#16213e; border-bottom:2px solid #333;
+  font-size:20px;
+}
+#timer-display { font-size:36px; font-weight:bold; color:#e94560; }
+.word-badge {
+  display:inline-block; padding:8px 24px; background:#e94560; border-radius:30px;
+  font-size:26px; font-weight:bold; margin-bottom:12px;
+}
+
+/* --- 绘图工具栏 --- */
+.draw-toolbar {
+  display:flex; align-items:center; gap:12px; padding:12px 28px;
+  background:#2a2a3e; flex-wrap:wrap;
+}
+#color-palette { display:flex; gap:10px; flex-wrap:wrap; }
+.color-swatch {
+  width:44px; height:44px; border-radius:50%; border:3px solid transparent;
+  cursor:pointer; transition:transform .1s;
+}
+.color-swatch:hover { transform:scale(1.15); }
+.color-swatch.active { border-color:white; transform:scale(1.15); }
+#btn-clear-canvas { background:#555; color:white; padding:10px 22px; font-size:20px; border-radius:8px; }
+
+/* --- Canvas --- */
+.canvas-wrapper {
+  flex:1 1 auto; display:flex; align-items:center; justify-content:center;
+  padding:10px; background:#111;
+  min-height:60vh; min-width:60vw;
+  position:relative;
+}
+.btn-submit-pos {
+  position:absolute; right:20px; bottom:20px;
+  z-index:10; padding:12px 28px;
+  font-size:20px; border-radius:10px;
+  box-shadow:0 4px 12px rgba(0,0,0,0.5);
+}
+#draw-canvas {
+  background:white; border-radius:4px; cursor:crosshair;
+  width:100%; height:100%;
+  max-width:90vw; max-height:80vh;
+  object-fit:contain;
+}
+
+/* --- 猜词 --- */
+.guess-image-wrapper { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:30px; }
+#guess-image { max-width:100%; max-height:60vh; border-radius:12px; cursor:pointer; background:white; border:3px solid #555; }
+.image-caption { color:#888; font-size:18px; margin-top:8px; }
+.guess-input-row { display:flex; gap:12px; padding:16px 28px 160px; align-items:center; }
+#guess-input { flex:1; padding:14px; border:2px solid #444; border-radius:10px; background:#2a2a3e; color:#eee; font-size:24px; }
+
+/* --- 等待提示 --- */
+.waiting-msg { text-align:center; padding:40px; font-size:28px; color:#aaa; }
+#btn-submit-drawing, #btn-submit-guess { margin:14px 28px; padding:18px; font-size:24px; font-weight:bold; }
+
+/* ==================== 选词弹窗 ==================== */
+.overlay {
+  position:fixed; inset:0; z-index:1000;
+  background:rgba(0,0,0,0.7); display:flex;
+  align-items:center; justify-content:center;
+}
+.modal {
+  background:#2a2a3e; border-radius:24px; padding:50px; max-width:700px; width:90%;
+  text-align:center;
+}
+.modal h2 { margin-bottom:14px; font-size:32px; }
+.modal p { font-size:20px; }
+.word-candidate-btn {
+  display:block; width:100%; padding:24px; margin:14px 0; font-size:32px;
+  background:#0f3460; color:white; border-radius:14px; font-weight:bold;
+  transition:transform .15s, background .15s;
+}
+.word-candidate-btn:hover { background:#e94560; transform:scale(1.02); }
+#word-select-timer { margin-top:16px; font-size:20px; color:#e94560; }
+
+/* ==================== 回顾界面 ==================== */
+#page-review {
+  display:flex; flex-direction:column; height:100%;
+  background:#0a0a1a; color:white;
+}
+#review-content {
+  flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;
+  padding:30px; text-align:center;
+}
+#review-chain-title { font-size:32px; margin-bottom:30px; color:#e94560; }
+#review-display { display:flex; flex-direction:column; align-items:center; gap:20px; width:100%; max-width:700px; }
+#review-image { max-width:100%; max-height:55vh; border-radius:12px; cursor:pointer; background:white; border:3px solid #555; }
+#review-text-area { font-size:32px; font-weight:bold; min-height:60px; }
+#review-progress-bar { height:6px; background:#333; margin:30px 30px; border-radius:3px; }
+#review-progress-fill { height:100%; background:#e94560; border-radius:3px; transition:width .5s; }
+
+/* --- 投票弹窗 --- */
+.vote-modal { max-width:800px; width:92vw; }
+.vote-modal h2 { font-size:32px; }
+.vote-modal p { font-size:22px; }
+.artwork-grid {
+  display:grid;
+  grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+  gap:16px; margin:16px 0; max-height:60vh; overflow-y:auto;
+}
+.artwork-card {
+  display:flex; flex-direction:column; align-items:center; gap:10px;
+  padding:18px; background:#1a1a3e; border-radius:14px; cursor:pointer;
+  border:4px solid transparent; transition:border-color .15s, background .15s;
+  position:relative; overflow:hidden; min-height:200px;
+}
+.artwork-card:hover { background:#2a2a5e; }
+.artwork-card.selected { border-color:#2ecc71; background:#1a3a2e; }
+.artwork-card img {
+  width:100%; aspect-ratio:3/2; object-fit:contain;
+  background:white; border-radius:10px; border:2px solid #555;
+}
+.artwork-card .artist-name { font-size:28px; font-weight:bold; color:#eee; }
+@keyframes heartBeat { 0%{transform:scale(1)} 100%{transform:scale(1.2)} }
+.vote-timer { font-size:36px; font-weight:bold; color:#e94560; margin:16px 0; }
+.vote-buttons { display:flex; gap:20px; justify-content:center; margin:24px 0; }
+.vote-btn { padding:20px 50px; font-size:28px; font-weight:bold; border-radius:14px; }
+.vote-btn-correct { background:#2ecc71; color:white; }
+.vote-btn-incorrect { background:#e74c3c; color:white; }
+.artwork-option {
+  display:flex; align-items:center; gap:12px; width:100%; padding:12px; margin:6px 0; font-size:16px;
+  background:#0f3460; color:white; border-radius:8px; cursor:pointer;
+  transition:background .15s;
+}
+.artwork-option:hover { background:#e94560; }
+.artwork-option.selected { background:#2ecc71; }
+#vote-progress { font-size:20px; color:#888; margin-top:12px; }
+.system-word { color:#ff4444; font-size:inherit; }
+
+/* ==================== 结算页 ==================== */
+#page-result {
+  display:flex; align-items:center; justify-content:center; height:100%;
+  background:linear-gradient(135deg,#1a1a2e,#16213e);
+}
+.result-container { text-align:center; padding:50px; }
+.result-container h1 { font-size:64px; margin-bottom:30px; }
+.result-section { margin:30px 0; }
+.result-section h2 { font-size:36px; margin-bottom:14px; }
+.result-names { font-size:48px; font-weight:bold; color:#f39c12; }
+#result-scores { color:#888; margin:30px 0; font-size:22px; }
+
+/* ==================== 聊天 ==================== */
+.chat-box {
+  position:fixed; left:10px; bottom:10px; width:500px;
+  background:rgba(0,0,0,0.6); border-radius:8px; display:flex; flex-direction:column;
+  backdrop-filter:blur(4px); z-index:2000;
+  overflow:visible;
+}
+.chat-inner { position:relative; display:flex; flex-direction:column; }
+.chat-msg-list {
+  position:absolute; bottom:100%; left:0; right:0;
+  display:flex; flex-direction:column;
+  padding:0 4px 6px; gap:4px; pointer-events:none;
+}
+.chat-msg {
+  display:inline-block; align-self:flex-start;
+  margin:0; word-break:break-word;
+  background:rgba(0,0,0,0.7); color:#eee;
+  padding:6px 12px; border-radius:8px; font-size:24px;
+  opacity:1;
+}
+.chat-msg.fade-in { animation:chatIn .3s ease forwards; }
+@keyframes chatIn { 0%{opacity:0;transform:translateY(10px)} 100%{opacity:1;transform:translateY(0)} }
+.chat-nick { color:#e94560; font-weight:bold; }
+.chat-input-row { display:flex; border-top:1px solid rgba(255,255,255,0.1); }
+.chat-input-row input {
+  flex:1; padding:14px 12px; border:none; background:transparent; color:#eee; font-size:30px;
+}
+.chat-input-row input::placeholder { color:#666; }
+.chat-input-row button {
+  padding:14px 20px; background:#e94560; color:white; font-size:28px; border-radius:0;
+}
+
+/* ==================== Toast ==================== */
+#toast-container {
+  position:fixed; top:20px; left:50%; transform:translateX(-50%);
+  z-index:2000; text-align:center; pointer-events:none;
+}
+.toast {
+  display:inline-block; padding:16px 36px; border-radius:12px;
+  background:rgba(0,0,0,0.8); color:white; font-size:24px;
+  animation:toastIn .3s, toastOut .5s 3s forwards;
+  pointer-events:auto; margin-bottom:10px;
+}
+@keyframes toastIn { 0%{opacity:0;transform:translateY(-20px)} 100%{opacity:1;transform:translateY(0)} }
+@keyframes toastOut { 0%{opacity:1} 100%{opacity:0;transform:translateY(-20px)} }
+
+/* ==================== 断开提示 ==================== */
+#disconnect-banner {
+  position:fixed; top:0; left:0; right:0; z-index:9999;
+  background:#e74c3c; color:white; text-align:center; padding:14px;
+  font-size:22px; font-weight:bold;
+}
+
+/* ==================== 加载 ==================== */
+.loading-spinner {
+  width:80px; height:80px; border:6px solid #333; border-top-color:#e94560;
+  border-radius:50%; animation:spin .8s linear infinite; margin:0 auto 20px;
+}
+@keyframes spin { to { transform:rotate(360deg); } }
+#loading-text { color:#aaa; font-size:22px; }
+
+/* ==================== 按钮通用 ==================== */
+.btn-primary { background:#e94560; color:white; border-radius:12px; font-weight:bold; }
+.btn-primary:hover { filter:brightness(1.1); }
+.btn-large { padding:20px 50px; font-size:28px; }
+.btn-disabled { opacity:0.5; cursor:not-allowed; }
+button:disabled { opacity:0.5; cursor:not-allowed; filter:grayscale(0.5); }
+.vote-btn:disabled { transform:none; box-shadow:none; }
+
+/* ==================== 弹窗按钮（游戏左下角） ==================== */
+#btn-toggle-chat {
+  position:fixed; left:10px; bottom:10px; z-index:501;
+  background:rgba(233,69,96,0.8); color:white; border-radius:30px;
+  padding:8px 14px; font-size:14px;
+  display:none;
+}
+
+/* ==================== 响应式 ==================== */
+@media (max-width:800px) {
+  .game-title { font-size:48px; }
+  .lobby-body { flex-direction:column; padding:14px; gap:14px; }
+  .lobby-left { flex:0 0 auto; }
+  .lobby-left h3, .lobby-center h3 { font-size:20px; }
+  #player-list { display:flex; flex-wrap:wrap; gap:6px; }
+  #player-list li { margin-bottom:0; font-size:16px; padding:10px 14px; }
+  .chat-box { width:280px; height:220px; left:5px; bottom:5px; }
+  .chat-box input { font-size:16px; }
+  .chat-msg-list { font-size:18px; }
+  .modal { padding:30px; }
+  .word-candidate-btn { font-size:24px; padding:16px; }
+  .vote-btn { padding:14px 30px; font-size:22px; }
+  #game-header { flex-wrap:wrap; gap:6px; font-size:16px; }
+  #timer-display { font-size:28px; }
+  .draw-toolbar { padding:8px 14px; gap:8px; }
+  .color-swatch { width:32px; height:32px; }
+}
+
+@media (max-width:500px) {
+  /* 整体缩小 ~20% */
+  .game-title { font-size:28px; }
+  .subtitle { font-size:14px; margin-bottom:20px; }
+  .entry-container { padding:16px; }
+  .entry-container input { font-size:15px; padding:10px; }
+  .entry-buttons { flex-direction:column; gap:8px; }
+  .entry-buttons button { font-size:15px; padding:10px; }
+  #entry-join-fields input { font-size:15px; }
+  .lobby-left h3, .lobby-center h3 { font-size:16px; }
+  .lobby-body { padding:10px; gap:10px; }
+  #player-list li { font-size:13px; padding:6px 10px; }
+  #game-header { font-size:13px; padding:8px 12px; }
+  #timer-display { font-size:22px; }
+  .word-badge { font-size:18px; padding:4px 14px; }
+  .draw-toolbar { padding:4px 8px; gap:4px; }
+  .color-swatch { width:24px; height:24px; }
+  #btn-clear-canvas { font-size:14px; padding:6px 12px; }
+  .chat-box { width:160px; min-height:auto; }
+  .chat-box input { font-size:12px; padding:4px 6px; }
+  .chat-msg-list { font-size:11px; padding:2px 4px; gap:2px; }
+  .chat-msg { font-size:14px; padding:4px 8px; }
+  .chat-input-row button { padding:6px 10px; font-size:14px; }
+  .modal { padding:16px; }
+  .modal h2 { font-size:22px; }
+  .word-candidate-btn { font-size:18px; padding:10px; }
+  .vote-btn { padding:10px 20px; font-size:18px; }
+  .vote-modal { max-width:95vw; }
+  .artwork-card { padding:10px; }
+  .artwork-card .artist-name { font-size:18px; }
+  .artwork-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap:8px; }
+  #review-chain-title { font-size:20px; }
+  #review-text-area { font-size:22px; }
+  .result-container h1 { font-size:32px; }
+  .result-names { font-size:28px; }
+  .result-section h2 { font-size:22px; }
+  .result-container { padding:20px; }
+  /* 手机端：猜词按钮放到输入框下方，偏右 */
+  .guess-input-row { flex-direction:column; gap:6px; padding:8px 12px 100px; align-items:flex-end; }
+  .guess-input-row button { width:60%; padding:10px; font-size:16px; }
+  #guess-input { font-size:16px; padding:8px; width:100%; }
+  /* 作画提交按钮手机端偏右 */
+  .btn-submit-pos { right:20px; transform:none; bottom:10px; padding:8px 18px; font-size:15px; }
+  .draw-toolbar { padding:4px 8px 4px 20px; }
+  .waiting-msg { font-size:18px; padding:16px; }
+  #btn-submit-drawing, #btn-submit-guess { font-size:16px; padding:10px; }
+  .toast { font-size:16px; padding:10px 18px; }
+  .lobby-header { font-size:13px; padding:8px 12px; }
+  .setting-row label { font-size:14px; }
+}

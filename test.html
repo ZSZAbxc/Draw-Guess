@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html><body>
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+<script>
+const socket = io();
+socket.on('connect', () => {
+  document.body.innerHTML += '<p>✅ 已连接，ID: ' + socket.id + '</p>';
+  socket.emit('create_room', {nickname: '测试'}, (res) => {
+    document.body.innerHTML += '<p>收到callback: ' + JSON.stringify(res) + '</p>';
+  });
+});
+socket.on('create_success', (data) => {
+  document.body.innerHTML += '<p>✅ 收到 create_success: ' + JSON.stringify(data) + '</p>';
+});
+socket.on('room_update', (data) => {
+  document.body.innerHTML += '<p>✅ 收到 room_update: ' + JSON.stringify({id: data.id, players: data.players.length}) + '</p>';
+});
+socket.on('room_error', (data) => {
+  document.body.innerHTML += '<p>❌ 收到 room_error: ' + JSON.stringify(data) + '</p>';
+});
+setTimeout(() => {
+  document.body.innerHTML += '<p>⏰ 5秒超时，检查事件是否全部到达</p>';
+}, 5000);
+</script>
+</body></html>

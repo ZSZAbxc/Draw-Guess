@@ -1,0 +1,13 @@
+{
+  "name": "draw-and-pass",
+  "version": "1.0.0",
+  "description": "传画接龙 - 多人联机绘画猜词接力游戏",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "socket.io": "^4.7.2"
+  }
+}

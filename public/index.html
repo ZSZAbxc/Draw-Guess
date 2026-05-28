@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>传画接龙</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ==================== 入口页 ==================== -->
+<div id="page-entry">
+  <div class="entry-container">
+    <h1 class="game-title">🎨 传画接龙</h1>
+    <p class="subtitle">绘画猜词接力派对游戏</p>
+    <input type="text" id="entry-nickname" placeholder="输入你的昵称" maxlength="10" autocomplete="off">
+    <div class="entry-buttons">
+      <button id="btn-create-room">创建房间</button>
+      <button id="btn-join-room">加入房间</button>
+    </div>
+    <div id="entry-join-fields" class="hidden">
+      <input type="text" id="entry-room-id" placeholder="房间号（6位）" maxlength="6" autocomplete="off">
+
+      <div class="entry-buttons">
+        <button id="btn-join-confirm">确认加入</button>
+        <button id="btn-join-back">返回</button>
+      </div>
+    </div>
+    <div id="entry-error" class="error-msg hidden"></div>
+  </div>
+</div>
+
+<!-- ==================== 大厅 ==================== -->
+<div id="page-lobby" class="hidden">
+  <div class="lobby-header">
+    <span id="lobby-room-id-display"></span>
+    <span id="lobby-player-count"></span>
+  </div>
+  <div class="lobby-body">
+    <div class="lobby-left">
+      <h3>👥 玩家列表</h3>
+      <ul id="player-list"></ul>
+    </div>
+    <div class="lobby-center">
+      <h3>⚙️ 房间设置</h3>
+      <div id="settings-panel">
+        <div class="setting-row">
+          <label>🎨 作画时间：<span id="draw-time-display">60</span>秒</label>
+          <input type="range" id="draw-time-slider" min="10" max="120" value="60" step="5">
+        </div>
+        <div class="setting-row">
+          <label>💬 猜词时间：<span id="guess-time-display">20</span>秒</label>
+          <input type="range" id="guess-time-slider" min="10" max="60" value="20" step="5">
+        </div>
+      </div>
+      <button id="btn-start-game" class="btn-primary btn-large hidden">🚀 开始游戏</button>
+      <div id="lobby-waiting" class="hidden"><em>等待房主开始游戏...</em></div>
+    </div>
+  </div>
+  </div>
+</div>
+
+<!-- ==================== 聊天（全局固定） ==================== -->
+<div id="lobby-chat" class="chat-box hidden">
+  <div class="chat-inner">
+  <div id="lobby-msg-list" class="chat-msg-list"></div>
+  <div class="chat-input-row">
+    <input type="text" id="lobby-chat-input" placeholder="说点什么..." maxlength="100">
+    <button id="lobby-chat-send">发送</button>
+  </div>
+  </div>
+</div>
+
+<div id="game-chat" class="chat-box hidden">
+  <div class="chat-inner">
+  <div id="game-msg-list" class="chat-msg-list"></div>
+  <div class="chat-input-row">
+    <input type="text" id="game-chat-input" placeholder="说点什么..." maxlength="100">
+    <button id="game-chat-send">发送</button>
+  </div>
+  </div>
+</div>
+
+<!-- ==================== 游戏界面 ==================== -->
+<div id="page-game" class="hidden">
+  <div id="game-header">
+    <span id="round-info"></span>
+    <span id="timer-display"></span>
+    <span id="task-info"></span>
+  </div>
+
+  <!-- 作画界面 -->
+  <div id="draw-area" class="hidden">
+    <div id="draw-word-display" class="word-badge"></div>
+    <div class="draw-toolbar">
+      <div id="color-palette"></div>
+      <button id="btn-clear-canvas">🗑️ 清空</button>
+    </div>
+    <div class="canvas-wrapper">
+      <canvas id="draw-canvas"></canvas>
+      <button id="btn-submit-drawing" class="btn-primary btn-submit-pos">✅ 提交画作</button>
+    </div>
+    <div id="draw-waiting" class="hidden waiting-msg">已提交 <span id="draw-progress">0/0</span>，等待其他玩家...</div>
+  </div>
+
+  <!-- 猜词界面 -->
+  <div id="guess-area" class="hidden">
+    <div class="guess-image-wrapper">
+      <img id="guess-image" src="" alt="上家的画">
+    </div>
+    <div class="guess-input-row">
+      <input type="text" id="guess-input" placeholder="输入你猜的词语..." maxlength="20" autocomplete="off">
+      <button id="btn-submit-guess" class="btn-primary">✅ 确认</button>
+    </div>
+    <div id="guess-waiting" class="hidden waiting-msg">已提交 <span id="guess-progress">0/0</span>，等待其他玩家...</div>
+  </div>
+
+  <!-- 选词弹窗 -->
+  <div id="word-select-overlay" class="hidden overlay">
+    <div class="modal">
+      <h2>🎯 选择初始词</h2>
+      <p>为你的链条选择一个词开始！</p>
+      <div id="word-candidates"></div>
+      <div id="word-select-timer"></div>
+    </div>
+  </div>
+
+  <!-- 系统提示 Toast -->
+  <div id="toast-container"></div>
+
+  <!-- 图片放大弹窗 -->
+  <div id="image-modal" class="hidden overlay" onclick="closeImageModal()">
+    <img id="image-modal-img" src="">
+  </div>
+</div>
+
+<!-- ==================== 回顾界面 ==================== -->
+<div id="page-review" class="hidden">
+  <div id="review-content">
+    <div id="review-chain-title"></div>
+    <div id="review-display">
+      <div id="review-image-area">
+        <div id="review-artist-label" style="font-size:28px;font-weight:bold;color:#e94560;margin-bottom:8px;min-height:40px"></div>
+        <img id="review-image" src="" onclick="openImageModal(this.src)">
+      </div>
+      <div id="review-text-area"></div>
+    </div>
+    <div id="review-progress-bar">
+      <div id="review-progress-fill"></div>
+    </div>
+  </div>
+
+  <!-- 投票界面 -->
+  <div id="vote-overlay" class="hidden overlay">
+    <div class="modal vote-modal">
+      <h2 id="vote-title"></h2>
+      <div id="vote-body"></div>
+      <div id="vote-timer" class="vote-timer"></div>
+      <div id="vote-progress"></div>
+      <div style="width:100%;height:8px;background:#333;border-radius:4px;margin-top:12px;overflow:hidden">
+        <div id="vote-progress-bar" style="width:0%;height:100%;background:#e94560;border-radius:4px;transition:width .3s"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 结算页 ==================== -->
+<div id="page-result" class="hidden">
+  <div class="result-container">
+    <h1>🏆 游戏结束！</h1>
+    <div class="result-section">
+      <h2>👁️ 一眼丁真（最佳猜手）</h2>
+      <div id="result-a" class="result-names"></div>
+    </div>
+    <div class="result-section">
+      <h2>🎨 灵魂画手（最佳画家）</h2>
+      <div id="result-b" class="result-names"></div>
+    </div>
+    <p id="result-scores"></p>
+    <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
+      <button id="btn-back-to-room" class="btn-primary btn-large">🔁 返回房间</button>
+      <button id="btn-back-to-lobby" class="btn-primary btn-large" style="background:#555">🔙 返回大厅</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 加载遮罩 ==================== -->
+<div id="loading-overlay" class="hidden overlay">
+  <div class="loading-spinner"></div>
+  <p id="loading-text">连接中...</p>
+</div>
+
+<!-- ==================== 断开提示 ==================== -->
+<div id="disconnect-banner" class="hidden">⚠️ 网络连接已断开，正在重连...</div>
+
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+<script src="game.js?v=2"></script>
+</body>
+</html>
