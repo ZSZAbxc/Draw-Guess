@@ -9,6 +9,7 @@
   "dependencies": {
     "docx": "^9.7.1",
     "express": "^4.18.2",
-    "socket.io": "^4.7.2"
+    "socket.io": "^4.7.2",
+    "socket.io-client": "^4.8.3"
   }
 }

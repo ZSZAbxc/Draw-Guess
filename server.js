@@ -126,7 +126,8 @@ function broadcastRoomUpdate(room) {
       id: p.id,
       nickname: p.nickname,
       isOwner: p.isOwner,
-      connected: p.connected
+      connected: p.connected,
+      settling: p.settling || false
     })),
     state: room.state,
     config: room.config,
@@ -336,6 +337,8 @@ function startReviewPhase(room) {
 }
 
 function processNextReviewStep(room) {
+  // 防止旧游戏的残留定时器干扰新游戏
+  if (room.state !== 'review') return;
   if (room.currentChainIndex >= room.chains.length) {
     // 所有链条回顾完毕，进入结算
     finishGame(room);
@@ -459,6 +462,7 @@ function scheduleNextReview(room, delay) {
 // 投票阶段
 // ============================================================
 function startVotingPhase(room) {
+  if (room.state !== 'review') return;
   const chainIndex = room.currentChainIndex;
 
   // 重置投票
@@ -554,6 +558,7 @@ function handleAccuracyVoteTimeout(room) {
 }
 
 function handleArtworkVoteTimeout(room) {
+  if (room.state !== 'review') return;
   clearRoomTimer(room);
 
   // 计算画作投票结果
@@ -587,6 +592,7 @@ function handleArtworkVoteTimeout(room) {
 let correctVotes = 0;
 
 function handleAccuracyVoteTimeout(room) {
+  if (room.state !== 'review') return;
   clearRoomTimer(room);
 
   correctVotes = 0;
@@ -673,16 +679,39 @@ function finishGame(room) {
     if (player) scoreBData[player.nickname] = score;
   });
 
+  // 标记所有玩家为结算中
+  room.players.forEach(p => { p.settling = true; });
+
   io.to(room.id).emit('game_finished', {
     scoreA: scoreAData,
     scoreB: scoreBData,
     titles: {
-      accuracyBest: topA,   // 一眼丁真
-      artworkBest: topB      // 灵魂画手
+      accuracyBest: topA,
+      artworkBest: topB
     }
   });
 
   systemToast(room, '🏆 游戏结束！查看最终排名！', 5000);
+
+  // 立即清除所有游戏数据，保留玩家列表
+  room.K = 0;
+  room.currentRound = 0;
+  room.chains = [];
+  room.chainDrawings = [];
+  room.chainGuesses = [];
+  room.scoreA = new Map();
+  room.scoreB = new Map();
+  room.selectedWords = new Map();
+  room.wordCandidates = new Map();
+  room.submissions = new Set();
+  room.currentChainIndex = 0;
+  room.reviewStepIndex = 0;
+  room.reviewLog = [];
+  room.votePhase = null;
+  room.votesAccuracy = new Map();
+  room.votesArtwork = new Map();
+  room.timerStart = null;
+  room.config = { drawTime: room.config.drawTime, guessTime: room.config.guessTime, wordLib: room.config.wordLib || '【简体中文】默认' };
 }
 
 // ============================================================
@@ -871,9 +900,14 @@ io.on('connection', (socket) => {
   socket.on('back_to_room', () => {
     const room = findRoomBySocket(socket);
     if (!room) return;
+    const player = room.players.find(p => p.id === socket.id);
+    const nick = player?.nickname || '未知';
 
+    // 强制清除所有游戏数据（无论当前状态）
     room.state = 'lobby';
+    room.K = 0;
     room.currentRound = 0;
+    room.chains = [];
     room.chainDrawings = [];
     room.chainGuesses = [];
     room.scoreA = new Map();
@@ -881,14 +915,20 @@ io.on('connection', (socket) => {
     room.selectedWords = new Map();
     room.wordCandidates = new Map();
     room.submissions = new Set();
-    room.chains = [];
     room.currentChainIndex = 0;
     room.reviewStepIndex = 0;
+    room.reviewLog = [];
+    room.votePhase = null;
+    room.votesAccuracy = new Map();
+    room.votesArtwork = new Map();
+    room.timerStart = null;
+    if (player) player.settling = false;
     clearRoomTimer(room);
 
-    socket.emit('back_to_room_ok');
     broadcastRoomUpdate(room);
-    systemToast(room, '🔄 游戏已重置，返回大厅', 2000);
+    socket.emit('back_to_room_ok');
+    socket.to(room.id).emit('player_returned', { nickname: nick });
+    systemToast(room, `🔄 ${nick} 已返回大厅`, 2000);
   });
 
   // ----- 开始游戏 -----
@@ -915,6 +955,10 @@ io.on('connection', (socket) => {
     room.wordCandidates = new Map();
     room.selectedWords = new Map();
     room.submissions = new Set();
+    room.reviewLog = [];
+    room.votePhase = null;
+    room.votesAccuracy = new Map();
+    room.votesArtwork = new Map();
 
     // 通知游戏开始
     io.to(room.id).emit('game_started', { K });

@@ -415,6 +415,7 @@ function connectSocket() {
     state.totalRounds = data.K * 2;
     state.round = 0;
     state.submitted = false;
+    state.reviewChains = [];
     dom.wordSelectOverlay.classList.add('hidden');
     showPage('game');
     showToast(`🎮 游戏开始！共 ${state.totalRounds} 轮`);
@@ -522,6 +523,12 @@ function connectSocket() {
     showPage('review');
     state.reviewChains = [];
     dom.reviewProgressFill.style.width = '0%';
+    // 清空回顾显示内容，防止上一局残留
+    dom.reviewChainTitle.textContent = '';
+    dom.reviewImage.src = '';
+    dom.reviewTextArea.innerHTML = '';
+    const label = document.getElementById('review-artist-label');
+    if (label) label.textContent = '';
   });
 
   socket.on('review_step', (data) => {
@@ -588,9 +595,31 @@ function connectSocket() {
     dom.resultA.textContent = data.titles.accuracyBest.length > 0 ? data.titles.accuracyBest.join('、') : '无';
     dom.resultB.textContent = data.titles.artworkBest.length > 0 ? data.titles.artworkBest.join('、') : '无';
     dom.resultScores.textContent = `总分详情已记录`;
+    const status = document.getElementById('result-status');
+    const totalPlayers = state.players.length;
+    if (status) status.textContent = `📋 游戏已结束（${totalPlayers}人），点击"返回房间"继续`;
+    // 隐藏所有可能还开着的弹窗
+    dom.wordSelectOverlay.classList.add('hidden');
+    dom.voteOverlay.classList.add('hidden');
+    dom.drawArea.classList.add('hidden');
+    dom.guessArea.classList.add('hidden');
+  });
+
+  socket.on('player_returned', (data) => {
+    const status = document.getElementById('result-status');
+    if (status) status.textContent = `👤 ${data.nickname} 已返回房间`;
   });
 
   socket.on('back_to_room_ok', () => {
+    // 重置所有游戏状态
+    state.K = 0;
+    state.totalRounds = 0;
+    state.round = 0;
+    state.roundType = '';
+    state.myTask = null;
+    state.submitted = false;
+    state.reviewChains = [];
+    state.chainIndex = null;
     showPage('lobby');
     showToast('🔄 已返回房间');
   });
@@ -1008,7 +1037,11 @@ function updateLobbyUI(data) {
     if (p.isOwner) {
       li.innerHTML += ' <span class="owner-badge">房主</span>';
     }
-    if (p.id === state.myId) {
+    if (p.settling) {
+      li.style.color = '#888';
+      li.innerHTML += ' <span class="owner-badge" style="background:#f39c12">结算中</span>';
+    }
+    if (p.id === state.myId && !p.settling) {
       li.style.color = '#e94560';
     }
     dom.playerList.appendChild(li);
