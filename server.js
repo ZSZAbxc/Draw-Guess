@@ -6,6 +6,8 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const words = require('./words');
+const wordLibraries = words.libraries || [];
+let currentWordLib = '【简体中文】默认'; // 当前活动的词库名称
 
 // ============================================================
 // Express 配置
@@ -86,7 +88,8 @@ function createRoom(id, socket, nickname, password) {
     state: 'lobby',
     config: {
       drawTime: 60,
-      guessTime: 20
+      guessTime: 20,
+      wordLib: '【简体中文】默认'
     },
     K: 0,
     chains: [],
@@ -128,6 +131,7 @@ function broadcastRoomUpdate(room) {
     state: room.state,
     config: room.config,
     K: room.K,
+    wordLibs: wordLibraries,
     chat: room.chat.slice(-50) // 最近50条聊天
   };
   io.to(room.id).emit('room_update', data);
@@ -778,6 +782,26 @@ io.on('connection', (socket) => {
     broadcastRoomUpdate(room);
   });
 
+  // ----- 选择词库（房主）-----
+  socket.on('select_wordlib', (data) => {
+    const room = findRoomBySocket(socket);
+    if (!room) return;
+    const player = room.players.find(p => p.id === socket.id);
+    if (!player?.isOwner) return;
+    const { wordLib } = data;
+    if (wordLib && wordLibraries.find(l => l.name === wordLib)) {
+      room.config.wordLib = wordLib;
+      currentWordLib = wordLib;
+      // 直接切换词库，无需清除缓存
+      const ok = words.setCurrentLib(wordLib);
+      if (ok) {
+        console.log(`[词库] 切换到 "${wordLib}" (${words.length} 词)`);
+      }
+      systemToast(room, `📖 词库已切换为「${wordLib}」`, 3000);
+      broadcastRoomUpdate(room);
+    }
+  });
+
   // ----- 房主转移 -----
   socket.on('transfer_owner', () => {
     const room = findRoomBySocket(socket);
@@ -1156,8 +1180,18 @@ io.on('connection', (socket) => {
 
     console.log(`[重连] ${nickname} 回到房间 ${roomId}`);
 
-    if (room.state === 'lobby') {
+    if (room.state === 'lobby' || room.state === 'finished') {
       socket.emit('join_success', { roomId });
+      if (room.state === 'finished') {
+        // 如果在结算页，重发结算数据
+        let maxA = 0, maxB = 0;
+        const topA = [], topB = [];
+        room.scoreA.forEach((s, pid) => { const p = room.players.find(x => x.id === pid); if (s > maxA) { maxA = s; topA.length = 0; } if (s >= maxA && p) topA.push(p.nickname); });
+        room.scoreB.forEach((s, pid) => { const p = room.players.find(x => x.id === pid); if (s > maxB) { maxB = s; topB.length = 0; } if (s >= maxB && p) topB.push(p.nickname); });
+        socket.emit('game_finished', {
+          titles: { accuracyBest: topA, artworkBest: topB }
+        });
+      }
     } else {
       // 游戏中：发送当前状态让客户端恢复
       let totalRounds = 2 * room.K;
@@ -1166,8 +1200,55 @@ io.on('connection', (socket) => {
         state: room.state,
         K: room.K,
         currentRound: room.currentRound,
-        totalRounds
+        totalRounds,
+        config: room.config
       });
+
+      // 根据当前状态发送对应任务
+      if (room.state === 'word_select') {
+        // 选词阶段：重发 word_select（如果该玩家是起点）
+        room.chains.forEach((chain, ci) => {
+          if (chain.startPlayerId === socket.id) {
+            const candidates = room.wordCandidates.get(chain.startPlayerId);
+            if (candidates) {
+              socket.emit('word_select', { candidates, timeout: 5, chainIndex: ci });
+            }
+          }
+        });
+      } else if (room.state.startsWith('draw_') || room.state.startsWith('guess_')) {
+        // 作画/猜词阶段：重发 round_start
+        const round = room.currentRound;
+        const isDraw = round % 2 === 0;
+        const chainStepIndex = Math.floor(round / 2);
+        room.chains.forEach((chain, chainIndex) => {
+          const step = chain.steps[round];
+          if (!step || step.playerId !== socket.id) return;
+          if (isDraw) {
+            let wordToDraw;
+            if (round === 0) {
+              wordToDraw = room.selectedWords.get(chain.startPlayerId) || pickRandomWord();
+            } else {
+              const prevGuess = room.chainGuesses[chainIndex] && room.chainGuesses[chainIndex][chainStepIndex - 1];
+              wordToDraw = prevGuess ? prevGuess.word : pickRandomWord();
+            }
+            socket.emit('round_start', {
+              round: round + 1, totalRounds, type: 'draw',
+              timeout: room.config.drawTime, yourTask: { word: wordToDraw }, chainIndex
+            });
+          } else {
+            const prevDraw = room.chainDrawings[chainIndex] && room.chainDrawings[chainIndex][chainStepIndex];
+            socket.emit('round_start', {
+              round: round + 1, totalRounds, type: 'guess',
+              timeout: room.config.guessTime,
+              yourTask: { imageBase64: prevDraw?.data || null, fromPlayer: chain.steps[round - 1]?.nickname || '' },
+              chainIndex
+            });
+          }
+        });
+      } else if (room.state === 'review') {
+        // 回顾阶段：重发 review_start
+        socket.emit('review_start', { totalChains: room.chains.length });
+      }
     }
     broadcastRoomUpdate(room);
     systemToast(room, `${nickname} 重新连接了`, 3000);
@@ -1244,5 +1325,6 @@ const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`\n  🎨 传画接龙服务器已启动`);
   console.log(`  🌐 http://localhost:${PORT}`);
-  console.log(`  📝 词库加载: ${words.length} 个词语\n`);
+  console.log(`  📝 当前词库: ${currentWordLib} (${words.length} 词)`);
+  console.log(`  📚 可用词库: ${wordLibraries.map(l=>l.name+'('+l.count+'词)').join(', ')}\n`);
 });

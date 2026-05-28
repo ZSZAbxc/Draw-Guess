@@ -52,6 +52,8 @@ dom.guessTimeDisplay   = $('guess-time-display');
 dom.btnStartGame       = $('btn-start-game');
 dom.lobbyWaiting       = $('lobby-waiting');
 dom.settingsPanel      = $('settings-panel');
+dom.wordlibDisplay     = $('wordlib-display');
+dom.wordlibSelector    = $('wordlib-selector');
 
 // 游戏
 dom.roundInfo          = $('round-info');
@@ -566,9 +568,17 @@ function connectSocket() {
     state.K = data.K;
     state.totalRounds = data.totalRounds;
     state.round = data.currentRound;
+    state.config = data.config;
     localStorage.setItem('draw_roomId', data.roomId);
     showPage('game');
     showToast(`🔄 已重连到游戏中（第 ${data.currentRound+1}/${data.totalRounds} 轮）`);
+    // 隐藏所有游戏子界面，等待服务端发送对应事件恢复
+    dom.drawArea.classList.add('hidden');
+    dom.guessArea.classList.add('hidden');
+    dom.drawWaiting.classList.add('hidden');
+    dom.guessWaiting.classList.add('hidden');
+    dom.wordSelectOverlay.classList.add('hidden');
+    dom.voteOverlay.classList.add('hidden');
   });
 
   // ---- 聊天 ----
@@ -947,6 +957,25 @@ function updateLobbyUI(data) {
     dom.playerList.appendChild(li);
   });
 
+  // 词库选择器
+  if (data.wordLibs && data.wordLibs.length > 0) {
+    const current = data.config?.wordLib || '默认';
+    dom.wordlibDisplay.textContent = current;
+    // 只在首次或词库列表变化时刷新下拉框
+    if (dom.wordlibSelector.options.length === 0 || dom.wordlibSelector.dataset.libs !== JSON.stringify(data.wordLibs.map(l=>l.name))) {
+      dom.wordlibSelector.innerHTML = '';
+      data.wordLibs.forEach(lib => {
+        const opt = document.createElement('option');
+        opt.value = lib.name;
+        opt.textContent = lib.name + ' (' + lib.count + '词)';
+        if (lib.name === current) opt.selected = true;
+        dom.wordlibSelector.appendChild(opt);
+      });
+      dom.wordlibSelector.dataset.libs = JSON.stringify(data.wordLibs.map(l=>l.name));
+    }
+    dom.wordlibSelector.value = current;
+  }
+
   // 房主权限
   if (state.isOwner) {
     dom.settingsPanel.classList.remove('hidden');
@@ -975,6 +1004,15 @@ function setupSettings() {
       socket.emit('update_config', { drawTime: parseInt(dom.drawTimeSlider.value), guessTime: parseInt(dom.guessTimeSlider.value) });
     }
   });
+  // 词库切换
+  dom.wordlibSelector.addEventListener('change', () => {
+    const lib = dom.wordlibSelector.value;
+    dom.wordlibDisplay.textContent = lib;
+    if (state.isOwner && state.roomId) {
+      socket.emit('select_wordlib', { wordLib: lib });
+    }
+  });
+
   dom.btnStartGame.addEventListener('click', () => {
     socket.emit('start_game');
   });

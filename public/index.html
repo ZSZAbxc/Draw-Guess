@@ -52,6 +52,10 @@
           <label>💬 猜词时间：<span id="guess-time-display">20</span>秒</label>
           <input type="range" id="guess-time-slider" min="10" max="60" value="20" step="5">
         </div>
+        <div class="setting-row">
+          <label>📖 词库：<span id="wordlib-display">默认</span></label>
+          <select id="wordlib-selector" style="width:100%;padding:10px;border:2px solid #444;border-radius:8px;background:#2a2a3e;color:#eee;font-size:18px;margin-top:4px"></select>
+        </div>
       </div>
       <button id="btn-start-game" class="btn-primary btn-large hidden">🚀 开始游戏</button>
       <div id="lobby-waiting" class="hidden"><em>等待房主开始游戏...</em></div>

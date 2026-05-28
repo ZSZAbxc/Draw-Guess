@@ -1,0 +1,189 @@
+传画接龙 — 项目复盘报告
+=====================================
+AI：DeepSeek-V4-Flash
+技术栈：Node.js + Express + Socket.IO + 纯前端
+=====================================
+
+
+一、项目概述
+-------------------------------------
+"传画接龙"是一款多人联机绘画猜词接力游戏。玩家轮流作画和猜词，形成一条
+"画→猜→画→猜……"的链条。游戏结束后进入回顾和投票环节，评选"一眼丁真"
+（最佳猜手）和"灵魂画手"（最佳画家）。
+
+核心架构：
+  - 后端：Node.js + Express（静态文件托管）+ Socket.IO（实时通信）
+  - 前端：纯 HTML/CSS/JS + Canvas API
+  - 词库：外部 words.txt 文件，可热替换
+  - 存储：全内存变量，无数据库
+
+项目文件（最终版）：
+  Draw-Guess/
+  ├── package.json          # 项目依赖
+  ├── server.js             # 服务端 (1256行)
+  ├── words.js              # 词库加载器
+  ├── words.txt             # 外部词库 (229词)
+  └── public/
+      ├── index.html        # 页面结构 (196行)
+      ├── style.css         # 样式 (282行)
+      └── game.js           # 前端逻辑 (~1000行)
+
+
+二、开发流程复盘
+-------------------------------------
+
+阶段 1：项目搭建与初始代码生成
+
+  [用户] 提供了完整的游戏规则文档（约 3000 字中文描述），包含游戏规则、
+          界面设计、后端实现细节、Socket.IO 通信协议等
+
+  [DeepSeek-V4-Flash] 根据需求文档生成了完整项目代码：server.js（1117行）、
+                      words.js、words.txt（229词）、index.html、style.css、
+                      game.js
+
+
+阶段 2：Bug 修复（按修复顺序，共 16 个）
+
+  #1  无法访问 localhost:3000
+       用户 → 沙箱环境与本地环境隔离。将代码下载到用户本地运行。
+
+  #2  创建房间后加载转圈不消失
+       客户端 emit 传三个散装参数，服务端用对象解构接收，导致 nickname=undefined
+       → 异常被 catch 吞掉 → 无响应。
+       修复：改为传对象 {nickname, roomName, password} + 传 callback；同时
+       增加 create_success/join_success 事件。
+
+  #3  创建/加入房间 UI 界面完全一样，房间号输入逻辑混乱
+       修复："创建房间"直接发请求→自动生成房间号→跳转大厅；
+       "加入房间"才显示房间号+确认/返回按钮。
+
+  #4  开始游戏要求至少 4 人
+       服务端写死 if (players.length < 4)。规则是 K=⌊N/2⌋，2人可玩。
+       改为 < 2。
+
+  #5  作画完成后下家看不到画作（错误图片）
+       客户端发 socket.emit('submit_drawing', base64字符串)，服务端读
+       data.imageBase64 (data是字符串→undefined)。改为直接读 data。
+
+  #6  选词后系统代选覆盖了用户选择
+       同格式问题：服务端 const { word } = data，data是字符串。改为直接读 word。
+
+  #7  画作人气投票点击无反馈
+       同格式问题：service端解构 { chainIndex, votedPlayerId }，客户端传散装参数。
+       同时增加视觉反馈（禁用按钮、"已投票"文字）。
+
+  #8  聊天框在某些时候消失
+       两个聊天框分别放在 #page-lobby 和 #page-game 内部，页面切换时被隐藏。
+       修复：移到页面容器外部，始终固定显示。
+
+  #9  回顾链条时玩家名称为 undefined
+       客户端访问 data.startPlayer，服务端将数据嵌套在 data.data.startPlayer。
+       修复：所有回顾步骤数据改为从 data.data 读取。
+
+  #10 聊天框功能不可用
+       客户端发裸字符串，服务端读 data.text → undefined。修复：直接读参数。
+
+  #11 画作预览透明只有线条
+       图片未设置白底。修复：CSS 加 background:white。
+
+  #12 回顾链条每条链重复展示两次
+       processNextReviewStep 最后一步同时调 scheduleNextReview(6s) 和
+       setTimeout(投票, 6.5s)，调度重复播放整条链。
+       修复：最后一步只保留投票 setTimeout。
+
+  #13 2人游戏点击开始没反应（JS 报错）
+       删除了密码输入框但 dom.entryPassword.addEventListener 仍在监听，
+       元素为 null 报错→整个 init 中断。
+       修复：移除该事件监听。
+
+  #14 聊天消息 15 秒后不淡化消失
+       双重 let 声明 (chatFadeTimer 出现两次) 导致脚本报错中断。
+       修复：改用 interval 轮询 + 直接操作 opacity。
+
+  #15 淡出中途输入消息恢复显示，但几秒后全部瞬间消失
+       淡出时 setTimeout 排期了 3 秒后清空列表，新消息重置了 opacity 但
+       没取消这个定时器。
+       修复：改用 interval 每 500ms 检查 fadeStart 时间戳判断是否满 3 秒。
+
+  #16 断线重连后回到大厅而不是游戏中
+       重连时始终发 join_success（切到大厅）。
+       修复：根据房间 state 判断，游戏中发 reconnect_game 切到游戏页。
+
+
+阶段 3：UI 优化（用户提出，DeepSeek-V4-Flash 执行）
+
+  - 聊天框放大 1.6 倍，文字再次加大
+  - 作画区域扩大至占视口 60%+
+  - 全部 UI 放大 100%（除聊天框和画布外）
+  - 提交画作按钮移到画布右下角
+  - 最佳画作预览加大 100%，改卡片网格布局
+  - 画线加粗到 2.5px
+  - 手机端 UI 单独缩小 20%，支持下拉避免聊天框遮挡
+  - 投票状态条可视化（✅❎☐）
+  - 选中画作显示❤️标记（全员可见）
+  - 画作作者标签固定在图片上方
+
+
+阶段 4：功能增强（用户提出，DeepSeek-V4-Flash 实现）
+
+  - 猜词超时提交输入框内容（非空时）
+  - 全部投票完成后倒计时缩短到 5 秒
+  - 画作投票显示作者提示词
+  - 聊天改为浮动弹幕式（15 秒淡化消失）
+  - 投票显示猜词玩家名称
+  - 游戏结束页增加"返回房间"按钮
+  - 断线重连机制，迁移投票记录（防止重连后重复投票）
+  - 重复昵称自动编号（张三、张三(2)）
+
+
+三、核心 Bug 规律总结
+-------------------------------------
+在整个项目中，一个模式反复出现——客户端/服务端数据格式不匹配：
+
+  事件              客户端发送                        服务端期望
+  create_room       (昵称, 房间名, 密码) 散装         {nickname, roomName, password}
+  join_room         (房间号, 昵称, 密码) 散装         {roomId, nickname, password}
+  submit_drawing    (base64字符串)                    data.imageBase64
+  submit_guess      (词语字符串)                      data.word
+  select_word       (词语字符串)                      data.word 解构
+  chat_msg          (文字字符串)                      data.text
+  vote_accuracy     (chainIndex, vote) 散装           {chainIndex, vote}
+  vote_artwork      (chainIndex, playerId) 散装       {chainIndex, votedPlayerId}
+  update_config     (drawTime, guessTime) 散装        {drawTime, guessTime}
+
+  合计：9 次同类 Bug
+
+根因：初始代码中服务端全部用对象解构写法
+  socket.on('event', (data) => { const { x } = data })
+但客户端大部分用散装参数
+  socket.emit('event', arg1, arg2)
+Socket.IO 的多参数不会被自动合并为对象，导致几乎所有事件通信都出了问题。
+
+
+四、模拟测试结果
+-------------------------------------
+  - 2~9 名玩家核心游戏逻辑：全部通过 ✅
+  - 断线重连（作画/猜词/投票各阶段）：38 项测试全部通过 ✅
+  - 重复昵称处理：57 项测试全部通过 ✅
+
+
+五、Git 提交建议
+-------------------------------------
+建议初始化 Git 仓库管理后续变更：
+
+  git init
+  git add .
+  git commit -m "🎨 传画接龙 完整版
+
+  - 多人联机绘画猜词接力游戏
+  - Node.js + Express + Socket.IO
+  - 纯前端 HTML/CSS/JS + Canvas
+  - 支持 2~9 名玩家
+  - 断线重连、重复昵称处理
+  - 投票系统、链条回顾
+  - 响应式设计支持移动端"
+
+=====================================
+— 报告结束 —
+DeepSeek-V4-Flash · 2026
+=====================================
