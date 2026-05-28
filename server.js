@@ -313,6 +313,12 @@ function createBlankCanvas() {
 // ============================================================
 // 回顾阶段
 // ============================================================
+function emitReviewStep(room, data) {
+  if (!room.reviewLog) room.reviewLog = [];
+  room.reviewLog.push(JSON.parse(JSON.stringify(data)));
+  io.to(room.id).emit('review_step', data);
+}
+
 function startReviewPhase(room) {
   room.state = 'review';
   room.currentChainIndex = 0;
@@ -342,7 +348,7 @@ function processNextReviewStep(room) {
   // 发送回顾步骤
   if (room.reviewStepIndex === 0) {
     // 链条开场
-    io.to(room.id).emit('review_step', {
+    emitReviewStep(room, {
       chainIndex: room.currentChainIndex,
       totalChains: room.chains.length,
       stepIndex: 0,
@@ -362,7 +368,7 @@ function processNextReviewStep(room) {
     const initWord = room.chainDrawings[room.currentChainIndex]?.[0]?.word || '（未知）';
     const initDrawing = room.chainDrawings[room.currentChainIndex]?.[0]?.data || null;
 
-    io.to(room.id).emit('review_step', {
+    emitReviewStep(room, {
       chainIndex: room.currentChainIndex,
       totalChains: room.chains.length,
       stepIndex: 1,
@@ -392,7 +398,7 @@ function processNextReviewStep(room) {
       // 展示画作
       const drawIndex = Math.floor(chainStepIdx / 2);
       const drawData = room.chainDrawings[room.currentChainIndex]?.[drawIndex];
-      io.to(room.id).emit('review_step', {
+      emitReviewStep(room, {
         chainIndex: room.currentChainIndex,
         totalChains: room.chains.length,
         stepIndex: stepIdx,
@@ -409,7 +415,7 @@ function processNextReviewStep(room) {
       const guessData = room.chainGuesses[room.currentChainIndex]?.[guessIndex];
       const isSystem = guessData?.isSystemGenerated || false;
 
-      io.to(room.id).emit('review_step', {
+      emitReviewStep(room, {
         chainIndex: room.currentChainIndex,
         totalChains: room.chains.length,
         stepIndex: stepIdx,
@@ -475,6 +481,7 @@ function startVotingPhase(room) {
     isSystem = guessData?.isSystemGenerated || false;
   }
 
+  room.votePhase = 'accuracy';
   // Step 1: 正误投票 (20s)
   io.to(room.id).emit('vote_request', {
     type: 'accuracy',
@@ -490,6 +497,7 @@ function startVotingPhase(room) {
 
   systemToast(room, `🔍 为链条 ${chainIndex + 1} 的最终猜词投票！`, 3000);
 
+  room.timerStart = Date.now();
   room.timer = setTimeout(() => {
     handleAccuracyVoteTimeout(room);
   }, 20000);
@@ -531,12 +539,14 @@ function handleAccuracyVoteTimeout(room) {
     }
   }
 
+  room.votePhase = 'artwork';
   io.to(room.id).emit('vote_request', {
     type: 'artwork',
     chainIndex,
     timeout: 20,
     data: { artworks }
   });
+  room.timerStart = Date.now();
 
   room.timer = setTimeout(() => {
     handleArtworkVoteTimeout(room);
@@ -560,6 +570,7 @@ function handleArtworkVoteTimeout(room) {
     artworkVotes: Object.fromEntries(room.votesArtwork)
   });
 
+  room.votePhase = null;
   // 显示 5 秒结果后进入下一条链
   setTimeout(() => {
     room.currentChainIndex++;
@@ -608,12 +619,14 @@ function handleAccuracyVoteTimeout(room) {
     }
   }
 
+  room.votePhase = 'artwork';
   io.to(room.id).emit('vote_request', {
     type: 'artwork',
     chainIndex,
     timeout: 20,
     data: { artworks }
   });
+  room.timerStart = Date.now();
 
   room.timer = setTimeout(() => {
     handleArtworkVoteTimeout(room);
@@ -780,6 +793,39 @@ io.on('connection', (socket) => {
     }
 
     broadcastRoomUpdate(room);
+  });
+
+  // ----- 退出房间 -----
+  socket.on('leave_room', () => {
+    const room = findRoomBySocket(socket);
+    if (!room) return;
+
+    const playerIndex = room.players.findIndex(p => p.id === socket.id);
+    if (playerIndex === -1) return;
+    const player = room.players[playerIndex];
+    const wasOwner = player.isOwner;
+
+    room.players.splice(playerIndex, 1);
+    socket.leave(room.id);
+
+    if (room.players.length === 0) {
+      rooms.delete(room.id);
+      console.log(`[清理房间] ${room.id} 已无玩家`);
+    } else {
+      // 房主转移
+      if (wasOwner) {
+        room.players[0].isOwner = true;
+        systemToast(room, `${room.players[0].nickname} 成为新房主`, 3000);
+      }
+      io.to(room.id).emit('player_left', {
+        nickname: player.nickname,
+        playerCount: room.players.length
+      });
+      broadcastRoomUpdate(room);
+    }
+
+    socket.emit('leave_room_ok');
+    console.log(`[退出房间] ${player.nickname} 离开 ${room.id}`);
   });
 
   // ----- 选择词库（房主）-----
@@ -971,7 +1017,9 @@ io.on('connection', (socket) => {
 
     const chainIndex = room.chains.indexOf(chain);
     if (!room.chainDrawings[chainIndex]) room.chainDrawings[chainIndex] = [];
-    if (room.chainDrawings[chainIndex][chainStepIndex]?.data !== null) return; // 已提交
+    // 检查是否已提交：data 为非空字符串才视为已提交，null/undefined/空均可继续
+    const existing = room.chainDrawings[chainIndex][chainStepIndex];
+    if (existing && existing.data && existing.data.length > 10) return;
 
     // data 是客户端传来的 base64 字符串
     const existingData = room.chainDrawings[chainIndex][chainStepIndex];
@@ -1049,7 +1097,9 @@ io.on('connection', (socket) => {
     });
 
     // 全部投完且剩余 >5s 则缩短为5s
-    if (room.votesAccuracy.size >= room.players.length && room.timer) {
+    const elapsed = Date.now() - (room.timerStart || Date.now());
+    const remaining = Math.max(0, 20000 - elapsed);
+    if (room.votesAccuracy.size >= room.players.length && room.timer && remaining > 5000) {
       clearRoomTimer(room);
       room.timer = setTimeout(() => handleAccuracyVoteTimeout(room), 5000);
       io.to(room.id).emit('timer_sync', { remaining: 5 });
@@ -1077,7 +1127,9 @@ io.on('connection', (socket) => {
     });
 
     // 全部投完且剩余 >5s 则缩短为5s
-    if (room.votesArtwork.size >= room.players.length && room.timer) {
+    const elapsed = Date.now() - (room.timerStart || Date.now());
+    const remaining = Math.max(0, 20000 - elapsed);
+    if (room.votesArtwork.size >= room.players.length && room.timer && remaining > 5000) {
       clearRoomTimer(room);
       room.timer = setTimeout(() => handleArtworkVoteTimeout(room), 5000);
       io.to(room.id).emit('timer_sync', { remaining: 5 });
@@ -1169,6 +1221,15 @@ io.on('connection', (socket) => {
     player.connected = true;
     socket.join(roomId);
 
+    // 迁移得分记录：旧 ID → 新 ID
+    [room.scoreA, room.scoreB].forEach(scoreMap => {
+      if (!scoreMap) return;
+      if (scoreMap.has(oldPlayerId)) {
+        scoreMap.set(socket.id, scoreMap.get(oldPlayerId));
+        scoreMap.delete(oldPlayerId);
+      }
+    });
+
     // 迁移投票记录：旧 ID → 新 ID
     [room.votesAccuracy, room.votesArtwork].forEach(voteMap => {
       if (!voteMap) return;
@@ -1176,6 +1237,25 @@ io.on('connection', (socket) => {
         voteMap.set(socket.id, voteMap.get(oldPlayerId));
         voteMap.delete(oldPlayerId);
       }
+    });
+
+    // 迁移选词记录：旧 ID → 新 ID
+    if (room.selectedWords && room.selectedWords.has(oldPlayerId)) {
+      room.selectedWords.set(socket.id, room.selectedWords.get(oldPlayerId));
+      room.selectedWords.delete(oldPlayerId);
+    }
+    // 迁移提交记录
+    if (room.submissions && room.submissions.has(oldPlayerId)) {
+      room.submissions.delete(oldPlayerId);
+      room.submissions.add(socket.id);
+    }
+
+    // 更新所有链条步骤中的 playerId 为新 ID，确保 submit_drawing/guess 能匹配
+    room.chains.forEach(chain => {
+      chain.steps.forEach(step => {
+        if (step.playerId === oldPlayerId) step.playerId = socket.id;
+      });
+      if (chain.startPlayerId === oldPlayerId) chain.startPlayerId = socket.id;
     });
 
     console.log(`[重连] ${nickname} 回到房间 ${roomId}`);
@@ -1208,7 +1288,7 @@ io.on('connection', (socket) => {
       if (room.state === 'word_select') {
         // 选词阶段：重发 word_select（如果该玩家是起点）
         room.chains.forEach((chain, ci) => {
-          if (chain.startPlayerId === socket.id) {
+          if (chain.startNickname === nickname) {
             const candidates = room.wordCandidates.get(chain.startPlayerId);
             if (candidates) {
               socket.emit('word_select', { candidates, timeout: 5, chainIndex: ci });
@@ -1222,7 +1302,8 @@ io.on('connection', (socket) => {
         const chainStepIndex = Math.floor(round / 2);
         room.chains.forEach((chain, chainIndex) => {
           const step = chain.steps[round];
-          if (!step || step.playerId !== socket.id) return;
+          // 用昵称匹配而非 socket.id（重连后 socket.id 已变化）
+          if (!step || step.nickname !== nickname) return;
           if (isDraw) {
             let wordToDraw;
             if (round === 0) {
@@ -1231,9 +1312,13 @@ io.on('connection', (socket) => {
               const prevGuess = room.chainGuesses[chainIndex] && room.chainGuesses[chainIndex][chainStepIndex - 1];
               wordToDraw = prevGuess ? prevGuess.word : pickRandomWord();
             }
+            // 检查是否已有提交的画作，重连时保留
+            const existingDraw = room.chainDrawings[chainIndex]?.[chainStepIndex]?.data || null;
             socket.emit('round_start', {
               round: round + 1, totalRounds, type: 'draw',
-              timeout: room.config.drawTime, yourTask: { word: wordToDraw }, chainIndex
+              timeout: room.config.drawTime,
+              yourTask: { word: wordToDraw, existingDrawing: existingDraw },
+              chainIndex
             });
           } else {
             const prevDraw = room.chainDrawings[chainIndex] && room.chainDrawings[chainIndex][chainStepIndex];
@@ -1246,8 +1331,76 @@ io.on('connection', (socket) => {
           }
         });
       } else if (room.state === 'review') {
-        // 回顾阶段：重发 review_start
+        // 回顾阶段：重发 review_start，并回放已展示的步骤
         socket.emit('review_start', { totalChains: room.chains.length });
+        // 重放当前链条已发送的 review_step（快速回放，1 秒间隔）
+        if (room.reviewLog && room.reviewLog.length > 0) {
+          const currentChainSteps = room.reviewLog.filter(
+            r => r.chainIndex === room.currentChainIndex
+          );
+          currentChainSteps.forEach((step, idx) => {
+            setTimeout(() => {
+              socket.emit('review_step', step);
+            }, idx * 1000);
+          });
+        }
+        // 如果在投票阶段，重发 vote_request
+        if (room.votePhase === 'accuracy') {
+          const chainIndex = room.currentChainIndex;
+          const chain = room.chains[chainIndex];
+          const initWord = room.chainDrawings[chainIndex]?.[0]?.word || '';
+          const totalSteps = chain.steps.length;
+          const lastStep = chain.steps[totalSteps - 1];
+          let finalGuess = '', isSystem = false;
+          if (lastStep.type === 'guess') {
+            const guessIndex = Math.floor((totalSteps - 2) / 2);
+            const gd = room.chainGuesses[chainIndex]?.[guessIndex];
+            finalGuess = gd?.word || '';
+            isSystem = gd?.isSystemGenerated || false;
+          }
+          socket.emit('vote_request', {
+            type: 'accuracy', chainIndex, timeout: 20,
+            data: { initWord, finalGuess, isSystemGenerated: isSystem, drawerNickname: lastStep?.nickname || '' }
+          });
+          // 同步已有投票进度
+          let voteBar = '';
+          room.players.forEach(p => {
+            const v = room.votesAccuracy.get(p.id);
+            if (v === 'correct') voteBar += '✅';
+            else if (v === 'incorrect') voteBar += '❎';
+            else voteBar += '☐';
+          });
+          socket.emit('vote_progress', { voted: room.votesAccuracy.size, total: room.players.length, voteBar });
+        } else if (room.votePhase === 'artwork') {
+          const chainIndex = room.currentChainIndex;
+          const chain = room.chains[chainIndex];
+          const artworks = [];
+          for (let si = 0; si < chain.steps.length; si += 2) {
+            const di = Math.floor(si / 2);
+            const dd = room.chainDrawings[chainIndex]?.[di];
+            if (dd) artworks.push({
+              playerId: chain.steps[si].playerId,
+              nickname: chain.steps[si].nickname,
+              drawing: dd.data,
+              prompt: dd.word || ''
+            });
+          }
+          socket.emit('vote_request', {
+            type: 'artwork', chainIndex, timeout: 20,
+            data: { artworks }
+          });
+          // 同步已有画作投票
+          room.votesArtwork.forEach((votedPlayerId, voterId) => {
+            const voter = room.players.find(p => p.id === voterId);
+            const target = room.players.find(p => p.id === votedPlayerId);
+            if (voter && target) {
+              socket.emit('vote_progress', {
+                voted: room.votesArtwork.size, total: room.players.length,
+                votedPlayerId, voterNickname: voter.nickname
+              });
+            }
+          });
+        }
       }
     }
     broadcastRoomUpdate(room);

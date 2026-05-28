@@ -103,6 +103,8 @@ dom.resultB            = $('result-b');
 dom.resultScores       = $('result-scores');
 dom.btnBackToLobby     = $('btn-back-to-lobby');
 dom.btnBackToRoom      = $('btn-back-to-room');
+dom.btnLeaveRoom       = $('btn-leave-room');
+dom.btnCopyRoomId      = $('btn-copy-roomid');
 
 // 通用
 dom.disconnectBanner   = $('disconnect-banner');
@@ -345,7 +347,24 @@ function connectSocket() {
     const prevRoom = localStorage.getItem('draw_roomId');
     const prevNick = localStorage.getItem('draw_nickname');
     if (prevRoom && prevNick) {
+      state._reconnecting = true;
+      // 显示重连提示
+      const banner = document.getElementById('reconnect-banner');
+      if (banner) {
+        banner.textContent = '你可能从一个正在进行游戏的房间断开了';
+        banner.classList.remove('hidden');
+      }
+      setTimeout(() => {
+        const b = document.getElementById('reconnect-banner');
+        if (b && state._reconnecting) b.textContent = '正在尝试重连';
+      }, 3000);
       socket.emit('reconnect_to_room', { roomId: prevRoom, nickname: prevNick });
+      // 10秒后清除重连标记
+      setTimeout(() => {
+        state._reconnecting = false;
+        const b = document.getElementById('reconnect-banner');
+        if (b) b.classList.add('hidden');
+      }, 10000);
     }
   });
 
@@ -431,10 +450,22 @@ function connectSocket() {
       dom.drawWordDisplay.textContent = '🎯 ' + data.yourTask.word;
       dom.drawWordDisplay.classList.remove('hidden');
       dom.drawArea.classList.remove('hidden');
-      clearCanvas();
-      resizeCanvas();
-      dom.btnSubmitDrawing.disabled = false;
-      dom.btnSubmitDrawing.textContent = '✅ 提交画作';
+      if (data.yourTask.existingDrawing) {
+        // 重连时保留已有画作
+        resizeCanvas();
+        const img = new Image();
+        img.onload = () => {
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          dom.btnSubmitDrawing.disabled = true;
+          dom.btnSubmitDrawing.textContent = '✅ 已提交';
+        };
+        img.src = data.yourTask.existingDrawing;
+      } else {
+        clearCanvas();
+        resizeCanvas();
+        dom.btnSubmitDrawing.disabled = false;
+        dom.btnSubmitDrawing.textContent = '✅ 提交画作';
+      }
       startTimer(data.timeout, () => {
         if (!state.submitted) {
           socket.emit('submit_drawing', getCanvasDataURL());
@@ -564,12 +595,22 @@ function connectSocket() {
     showToast('🔄 已返回房间');
   });
 
+  socket.on('leave_room_ok', () => {
+    localStorage.removeItem('draw_roomId');
+    localStorage.removeItem('draw_nickname');
+    showPage('entry');
+    showToast('🚪 已退出房间');
+  });
+
   socket.on('reconnect_game', (data) => {
     state.K = data.K;
     state.totalRounds = data.totalRounds;
     state.round = data.currentRound;
     state.config = data.config;
     localStorage.setItem('draw_roomId', data.roomId);
+    state._reconnecting = false;
+    const b = document.getElementById('reconnect-banner');
+    if (b) b.classList.add('hidden');
     showPage('game');
     showToast(`🔄 已重连到游戏中（第 ${data.currentRound+1}/${data.totalRounds} 轮）`);
     // 隐藏所有游戏子界面，等待服务端发送对应事件恢复
@@ -593,6 +634,19 @@ function connectSocket() {
   });
 
   socket.on('room_error', (data) => {
+    if (state._reconnecting) {
+      // 重连失败
+      const banner = document.getElementById('reconnect-banner');
+      if (banner) {
+        banner.style.background = '#e74c3c';
+        banner.textContent = '房间已不存在';
+        setTimeout(() => { banner.classList.add('hidden'); }, 3000);
+      }
+      localStorage.removeItem('draw_roomId');
+      localStorage.removeItem('draw_nickname');
+      state._reconnecting = false;
+      return;
+    }
     dom.entryError.textContent = data.message;
     dom.entryError.classList.remove('hidden');
   });
@@ -604,6 +658,9 @@ function connectSocket() {
     showPage('lobby');
     localStorage.setItem('draw_roomId', data.roomId);
     localStorage.setItem('draw_nickname', data.nickname);
+    state._reconnecting = false;
+    const b = document.getElementById('reconnect-banner');
+    if (b) b.classList.add('hidden');
   });
 
   // ---- 创建结果 ----
@@ -1060,6 +1117,29 @@ function setupBackToLobby() {
   dom.btnBackToRoom.addEventListener('click', () => {
     socket.emit('back_to_room');
     showToast('正在返回房间...');
+  });
+
+  // 复制房间号
+  dom.btnCopyRoomId.addEventListener('click', () => {
+    const roomId = state.roomId;
+    if (!roomId) return;
+    navigator.clipboard.writeText(roomId).then(() => {
+      showToast('✅ 已复制房间号：' + roomId);
+    }).catch(() => {
+      // fallback: 选中文本方式
+      const ta = document.createElement('textarea');
+      ta.value = roomId;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      showToast('✅ 已复制房间号：' + roomId);
+    });
+  });
+
+  // 退出房间
+  dom.btnLeaveRoom.addEventListener('click', () => {
+    socket.emit('leave_room');
   });
 
   // 返回大厅：房主转移

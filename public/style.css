@@ -206,9 +206,13 @@ button { cursor:pointer; border:none; border-radius:10px; padding:14px 28px; fon
 /* ==================== 聊天 ==================== */
 .chat-box {
   position:fixed; left:10px; bottom:10px; width:500px;
-  background:rgba(0,0,0,0.6); border-radius:8px; display:flex; flex-direction:column;
-  backdrop-filter:blur(4px); z-index:2000;
-  overflow:visible;
+  background:transparent; border-radius:8px; display:flex; flex-direction:column;
+  z-index:2000;
+}
+.chat-input-row {
+  display:flex; border-top:1px solid rgba(255,255,255,0.1);
+  background:rgba(0,0,0,0.6); border-radius:0 0 8px 8px;
+  backdrop-filter:blur(4px);
 }
 .chat-inner { position:relative; display:flex; flex-direction:column; }
 .chat-msg-list {
@@ -288,7 +292,7 @@ button:disabled { opacity:0.5; cursor:not-allowed; filter:grayscale(0.5); }
   .lobby-left h3, .lobby-center h3 { font-size:20px; }
   #player-list { display:flex; flex-wrap:wrap; gap:6px; }
   #player-list li { margin-bottom:0; font-size:16px; padding:10px 14px; }
-  .chat-box { width:280px; height:220px; left:5px; bottom:5px; }
+  .chat-box { width:280px; left:5px; bottom:5px; }
   .chat-box input { font-size:16px; }
   .chat-msg-list { font-size:18px; }
   .modal { padding:30px; }
