@@ -212,6 +212,8 @@ function nextStage(room) {
   const roundType = isDraw ? 'draw' : 'guess';
   const timeout = isDraw ? room.config.drawTime : room.config.guessTime;
 
+  // 必须先设置 timerStart，后面的 round_start 需要用它计算剩余时间
+  room.timerStart = Date.now();
   // 广播 round_start 给对应玩家
   const chainStepIndex = Math.floor(round / 2); // 第几次画或猜
 
