@@ -376,6 +376,11 @@ let socket = null;
 function connectSocket() {
   socket = io();
 
+  // 响应服务端 ping 测量
+  socket.on('ping_measure', (data) => {
+    socket.emit('pong_measure', { t: data.t });
+  });
+
   socket.on('connect', () => {
     dom.disconnectBanner.classList.add('hidden');
     state.myId = socket.id;
@@ -588,7 +593,8 @@ function connectSocket() {
           if (isMe && done) { status = '你（已完成）'; color = '#2ecc71'; }
           else if (done) { status = '已完成'; color = '#2ecc71'; }
           else { status = state.roundType === 'guess' ? '思考中' : '作画中'; color = '#f39c12'; }
-          html += `<div style="color:${color}"><span style="font-size:20px;margin-right:4px">${av}</span>${p.nickname} — ${status}</div>`;
+          const lat2 = p.connected === false ? '' : latencyHtml(p.latency);
+          html += `<div style="color:${color}"><span style="font-size:20px;margin-right:4px">${av}</span>${p.nickname}${lat2} — ${status}</div>`;
         });
         list.innerHTML = html;
         modal.classList.remove('hidden');
@@ -650,7 +656,8 @@ function connectSocket() {
         if (vs.vote === 'correct') { statusText = '✅ 确实挺不错的'; statusColor = '#2ecc71'; }
         else if (vs.vote === 'incorrect') { statusText = '❌ 差点没缓过来'; statusColor = '#ff4444'; }
         else { statusText = '🤔 思考中'; statusColor = '#f39c12'; }
-        row.innerHTML = `<span style="font-size:20px;margin-right:4px">${vs.avatar || '😀'}</span><span style="color:${isMe?'#e94560':'#ccc'}">${isMe?' (你)':''} ${vs.nickname}</span> <span style="float:right;color:${statusColor}">${statusText}</span>`;
+        const lat4 = latencyHtml(vs.latency);
+        row.innerHTML = `<span style="font-size:20px;margin-right:4px">${vs.avatar || '😀'}</span><span style="color:${isMe?'#e94560':'#ccc'}">${isMe?' (你)':''} ${vs.nickname}</span>${lat4} <span style="float:right;color:${statusColor}">${statusText}</span>`;
       });
     }
     // 画作投票：所有人同步显示爱心标记 + 投票者名字
@@ -938,7 +945,8 @@ function showVoteUI(data) {
       row.id = 'voter-row-' + pl.id;
       const isMe = pl.id === state.myId;
       const av = pl.avatar || '😀';
-      row.innerHTML = `<span style="font-size:20px;margin-right:4px">${av}</span><span style="color:${isMe?'#e94560':'#ccc'}">${isMe?' (你)':''} ${pl.nickname}</span> <span style="float:right;color:#f39c12">🤔 思考中</span>`;
+      const lat3 = pl.connected === false ? '' : latencyHtml(pl.latency);
+      row.innerHTML = `<span style="font-size:20px;margin-right:4px">${av}</span><span style="color:${isMe?'#e94560':'#ccc'}">${isMe?' (你)':''} ${pl.nickname}</span>${lat3} <span style="float:right;color:#f39c12">🤔 思考中</span>`;
       listDiv.appendChild(row);
     });
     dom.voteBody.appendChild(listDiv);
@@ -1103,6 +1111,13 @@ function addChatMessage(area, nickname, text) {
 if (document.readyState !== 'loading') startChatFadeCheck();
 else document.addEventListener('DOMContentLoaded', startChatFadeCheck);
 
+function latencyHtml(ms) {
+  if (ms === -2) return ''; // 掉线
+  if (ms < 0) return '<span style="font-size:12px;color:#888;margin-left:6px">--ms</span>';
+  const color = ms <= 500 ? '#2ecc71' : (ms <= 1000 ? '#f39c12' : '#ff4444');
+  return `<span style="font-size:12px;color:${color};margin-left:6px">${ms}ms</span>`;
+}
+
 function escapeHtml(text) {
   const div = document.createElement('div');
   div.textContent = text;
@@ -1253,7 +1268,8 @@ function updateLobbyUI(data) {
   dom.playerList.innerHTML = '';
   data.players.forEach(p => {
     const li = document.createElement('li');
-    li.innerHTML = `<span style="font-size:24px;margin-right:6px">${p.avatar || '😀'}</span> ${p.nickname}`;
+    const lat = p.connected ? latencyHtml(p.latency) : '';
+    li.innerHTML = `<span style="font-size:24px;margin-right:6px">${p.avatar || '😀'}</span> ${p.nickname}${lat}`;
     if (p.isOwner) {
       li.innerHTML += ' <span class="owner-badge">房主</span>';
     }

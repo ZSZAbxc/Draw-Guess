@@ -10,15 +10,41 @@ const wordLibraries = words.libraries || [];
 let currentWordLib = '【简体中文】默认'; // 当前活动的词库名称
 
 // ============================================================
+// 延迟追踪
+// ============================================================
+const socketLatency = new Map(); // socket.id -> { latency: ms, time: timestamp }
+
+function getLatency(socketId) {
+  const d = socketLatency.get(socketId);
+  return d ? d.latency : -1;
+}
+
+// ============================================================
 // Express 配置
 // ============================================================
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
-  maxHttpBufferSize: 5 * 1024 * 1024 // 5MB 限制，用于画作 base64
+  maxHttpBufferSize: 5 * 1024 * 1024,
+  cors: { origin: '*', methods: ['GET', 'POST'] },
+  transports: ['websocket', 'polling'],
+  allowEIO3: true
 });
 
 app.use(express.static('public'));
+
+// 每 5 秒向所有连接发送 ping 测量
+setInterval(() => {
+  for (const [sid, socket] of io.of('/').sockets) {
+    if (socket.connected) {
+      try { socket.emit('ping_measure', { t: Date.now() }); } catch(e) {}
+    }
+  }
+  const cutoff = Date.now() - 30000;
+  for (const [sid, data] of socketLatency) {
+    if (data.time < cutoff) socketLatency.delete(sid);
+  }
+}, 5000);
 
 // ============================================================
 // 内存数据存储
@@ -129,7 +155,8 @@ function broadcastRoomUpdate(room) {
       avatar: p.avatar || '😀',
       isOwner: p.isOwner,
       connected: p.connected,
-      settling: p.settling || false
+      settling: p.settling || false,
+      latency: p.connected ? getLatency(p.id) : -2
     })),
     state: room.state,
     config: room.config,
@@ -507,6 +534,7 @@ function startVotingPhase(room) {
   }
 
   room.votePhase = 'accuracy';
+  room.timerStart = Date.now(); // 必须在 getRemaining 之前设置
   // Step 1: 正误投票 (20s)
   io.to(room.id).emit('vote_request', {
     type: 'accuracy',
@@ -517,7 +545,7 @@ function startVotingPhase(room) {
       finalGuess,
       isSystemGenerated: isSystem,
       drawerNickname: lastStep?.nickname || '',
-      players: room.players.map(p => ({ id: p.id, nickname: p.nickname, avatar: p.avatar || '😀' }))
+      players: room.players.map(p => ({ id: p.id, nickname: p.nickname, avatar: p.avatar || '😀', latency: getLatency(p.id) }))
     }
   });
 
@@ -566,14 +594,14 @@ function handleAccuracyVoteTimeout(room) {
   }
 
   room.votePhase = 'artwork';
+  room.timerStart = Date.now();
   io.to(room.id).emit('vote_request', {
     type: 'artwork',
     chainIndex,
     timeout: getRemaining(room, 20),
     data: { artworks }
   });
-  room.timerStart = Date.now();
-
+  
   room.timer = setTimeout(() => {
     handleArtworkVoteTimeout(room);
   }, 20000);
@@ -648,14 +676,14 @@ function handleAccuracyVoteTimeout(room) {
   }
 
   room.votePhase = 'artwork';
+  room.timerStart = Date.now();
   io.to(room.id).emit('vote_request', {
     type: 'artwork',
     chainIndex,
     timeout: getRemaining(room, 20),
     data: { artworks }
   });
-  room.timerStart = Date.now();
-
+  
   room.timer = setTimeout(() => {
     handleArtworkVoteTimeout(room);
   }, 20000);
@@ -741,6 +769,13 @@ function finishGame(room) {
 // ============================================================
 io.on('connection', (socket) => {
   console.log(`[连接] ${socket.id} 已连接`);
+
+  // 延迟测量
+  socket.on('pong_measure', (data) => {
+    const sent = data.t || 0;
+    const latency = Date.now() - sent;
+    socketLatency.set(socket.id, { latency, time: Date.now() });
+  });
 
   // ----- 创建房间 -----
   socket.on('create_room', (data, callback) => {
@@ -1161,7 +1196,7 @@ io.on('connection', (socket) => {
     const voterStatus = room.players.map(p => ({
       playerId: p.id,
       nickname: p.nickname,
-      avatar: p.avatar || '😀',
+      avatar: p.avatar || '😀', latency: getLatency(p.id),
       vote: room.votesAccuracy.get(p.id) || null
     }));
     io.to(room.id).emit('vote_progress', {
@@ -1443,7 +1478,7 @@ io.on('connection', (socket) => {
           submitted: room.submissions.size,
           total: room.chains.length,
           submittedIds,
-          players: room.players.map(p => ({ id: p.id, nickname: p.nickname, avatar: p.avatar || '😀' }))
+          players: room.players.map(p => ({ id: p.id, nickname: p.nickname, avatar: p.avatar || '😀', latency: getLatency(p.id) }))
         });
       } else if (room.state === 'review') {
         // 回顾阶段：重发 review_start，并回放已展示的步骤
@@ -1477,7 +1512,7 @@ io.on('connection', (socket) => {
           socket.emit('vote_request', {
             type: 'accuracy', chainIndex, timeout: getRemaining(room, 20),
             data: { initWord, finalGuess, isSystemGenerated: isSystem, drawerNickname: lastStep?.nickname || '',
-              players: room.players.map(p => ({ id: p.id, nickname: p.nickname, avatar: p.avatar || '😀' })),
+              players: room.players.map(p => ({ id: p.id, nickname: p.nickname, avatar: p.avatar || '😀', latency: getLatency(p.id) })),
               myVote: myCurrentVote }
           });
           // 同步已有投票进度
@@ -1489,7 +1524,7 @@ io.on('connection', (socket) => {
             else voteBar += '☐';
           });
           const voterStatus2 = room.players.map(p => ({
-            playerId: p.id, nickname: p.nickname, avatar: p.avatar || '😀',
+            playerId: p.id, nickname: p.nickname, avatar: p.avatar || '😀', latency: getLatency(p.id),
             vote: room.votesAccuracy.get(p.id) || null
           }));
           socket.emit('vote_progress', { voted: room.votesAccuracy.size, total: room.players.length, voteBar, voterStatus: voterStatus2 });
@@ -1589,7 +1624,7 @@ function broadcastSubmitProgress(room) {
     submitted,
     total,
     submittedIds,
-    players: room.players.map(p => ({ id: p.id, nickname: p.nickname, avatar: p.avatar || '😀' }))
+    players: room.players.map(p => ({ id: p.id, nickname: p.nickname, avatar: p.avatar || '😀', latency: getLatency(p.id) }))
   });
 }
 
