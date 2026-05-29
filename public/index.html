@@ -13,7 +13,16 @@
   <div class="entry-container">
     <h1 class="game-title">🎨 传画接龙</h1>
     <p class="subtitle">绘画猜词接力派对游戏</p>
-    <input type="text" id="entry-nickname" placeholder="输入你的昵称" maxlength="10" autocomplete="off">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;position:relative">
+      <div style="position:relative;display:inline-block">
+        <span id="avatar-hint" style="position:absolute;right:calc(100% + 6px);top:50%;transform:translateY(-50%);font-size:14px;color:#888;white-space:nowrap">点击切换头像→</span>
+        <div id="avatar-trigger" style="font-size:40px;cursor:pointer;width:50px;height:50px;display:flex;align-items:center;justify-content:center;background:#2a2a3e;border-radius:10px;border:2px solid #444;transition:border-color .15s" title="点击选择头像">😀</div>
+      </div>
+      <input type="text" id="entry-nickname" placeholder="输入你的昵称" maxlength="10" autocomplete="off" style="flex:1;margin-bottom:0">
+    </div>
+    <div id="avatar-panel" class="hidden" style="margin-bottom:12px;padding:10px;background:#2a2a3e;border-radius:10px;border:1px solid #555;max-height:180px;overflow-y:auto">
+      <div id="avatar-grid" style="display:grid;grid-template-columns:repeat(8,1fr);gap:6px"></div>
+    </div>
     <div class="entry-buttons">
       <button id="btn-create-room">创建房间</button>
       <button id="btn-join-room">加入房间</button>
@@ -100,6 +109,11 @@
     <div id="draw-word-display" class="word-badge"></div>
     <div class="draw-toolbar">
       <div id="color-palette"></div>
+      <div style="display:flex;align-items:center;gap:8px;margin-left:4px">
+        <button id="btn-brush-fine" class="brush-btn active" style="width:36px;height:36px;border-radius:50%;background:#555;color:white;border:3px solid transparent;font-size:12px;padding:0;display:flex;align-items:center;justify-content:center" title="细笔">─</button>
+        <button id="btn-brush-thick" class="brush-btn" style="width:36px;height:36px;border-radius:50%;background:#555;color:white;border:3px solid transparent;font-size:20px;padding:0;display:flex;align-items:center;justify-content:center;font-weight:bold" title="粗笔">━</button>
+      </div>
+      <button id="btn-eraser" style="background:#555;color:white;padding:6px 14px;font-size:18px;border-radius:8px;border:3px solid transparent">🧹 擦</button>
       <button id="btn-clear-canvas">🗑️ 清空</button>
     </div>
     <div class="canvas-wrapper">
@@ -137,6 +151,13 @@
   <!-- 图片放大弹窗 -->
   <div id="image-modal" class="hidden overlay" onclick="closeImageModal()">
     <img id="image-modal-img" src="">
+  </div>
+  <!-- 等待弹窗 -->
+  <div id="waiting-modal" class="hidden overlay" style="z-index:1500">
+    <div class="modal" style="max-width:400px;padding:24px">
+      <h2 style="font-size:28px;margin-bottom:16px">⏳ 等待其他玩家</h2>
+      <div id="waiting-player-list" style="text-align:left;font-size:22px;line-height:2"></div>
+    </div>
   </div>
 </div>
 

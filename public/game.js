@@ -24,6 +24,7 @@ const state = {
   disconnectToast: null,
   reviewChains: [],
   reviewStepTimer: null,
+  currentChainLength: 0,
 };
 
 // ---- DOM 引用 ----
@@ -156,6 +157,8 @@ let ctx = null;
 let isDrawing = false;
 let lastX = 0, lastY = 0;
 let selectedColor = '#000000';
+let brushWidth = 2.5; // 细笔默认
+let isEraser = false; // 是否橡皮擦模式
 
 function initCanvas() {
   if (!canvas) return;
@@ -164,6 +167,32 @@ function initCanvas() {
   setupCanvasEvents();
   buildPalette();
   dom.btnClearCanvas.addEventListener('click', clearCanvas);
+  // 橡皮擦切换（与颜色互斥）
+  const eraserBtn = document.getElementById('btn-eraser');
+  function setEraser(enabled) {
+    isEraser = enabled;
+    if (eraserBtn) eraserBtn.style.borderColor = enabled ? '#e94560' : 'transparent';
+    if (enabled) {
+      // 取消所有颜色选中
+      document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'));
+    }
+  }
+  if (eraserBtn) eraserBtn.addEventListener('click', () => setEraser(!isEraser));
+  // 画笔大小切换
+  const fineBtn = document.getElementById('btn-brush-fine');
+  const thickBtn = document.getElementById('btn-brush-thick');
+  function setBrush(size) {
+    brushWidth = size;
+    if (ctx) ctx.lineWidth = brushWidth;
+    if (fineBtn && thickBtn) {
+      [fineBtn, thickBtn].forEach(b => b.style.borderColor = 'transparent');
+      (size <= 3 ? fineBtn : thickBtn).style.borderColor = '#e94560';
+    }
+  }
+  // 默认选中细笔
+  setBrush(2.5);
+  if (fineBtn) fineBtn.addEventListener('click', () => setBrush(2.5));
+  if (thickBtn) thickBtn.addEventListener('click', () => setBrush(12.5));
 }
 
 function resizeCanvas() {
@@ -177,7 +206,7 @@ function resizeCanvas() {
     canvas.width = w;
     canvas.height = h;
     if (ctx) {
-      ctx.lineWidth = 2.5;
+      ctx.lineWidth = brushWidth;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
       if (data && w > 0 && h > 0) {
@@ -225,9 +254,11 @@ function draw(e) {
   ctx.beginPath();
   ctx.moveTo(lastX, lastY);
   ctx.lineTo(pos.x, pos.y);
-  ctx.strokeStyle = selectedColor;
-  ctx.lineWidth = 2.5;
+  ctx.globalCompositeOperation = isEraser ? 'destination-out' : 'source-over';
+  ctx.strokeStyle = isEraser ? '#ffffff' : selectedColor;
+  ctx.lineWidth = brushWidth;
   ctx.stroke();
+  ctx.globalCompositeOperation = 'source-over';
   lastX = pos.x;
   lastY = pos.y;
 }
@@ -263,6 +294,12 @@ function buildPalette() {
       document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'));
       swatch.classList.add('active');
       selectedColor = c;
+      // 强制切换到画笔模式
+      if (isEraser) {
+        isEraser = false;
+        const eb = document.getElementById('btn-eraser');
+        if (eb) eb.style.borderColor = 'transparent';
+      }
     });
     dom.colorPalette.appendChild(swatch);
   });
@@ -439,8 +476,25 @@ function connectSocket() {
     state.roundType = data.type;
     state.myTask = data.yourTask;
     state.submitted = false;
-    const roundNum = data.round + 1;
-    dom.roundInfo.textContent = `第 ${roundNum}/${state.totalRounds} 轮 · ${data.type === 'draw' ? '✏️ 作画' : '💬 猜词'}`;
+    state.totalRounds = data.totalRounds;
+    // 步骤指示器（不含自己名称）
+    const total = data.totalRounds;
+    const stepIdx = data.round - 1;
+    const isDraw = data.type === 'draw';
+    const isLast = stepIdx >= total - 1;
+    const prev = data.prevPlayer;
+    const next = data.nextPlayer;
+    let indicator = '';
+    if (isDraw && stepIdx === 0) {
+      indicator = `✏️ 画(当前)→💬${next||'?'}猜`;
+    } else if (!isDraw && isLast) {
+      indicator = `✏️${prev||'?'}画→💬 猜(当前)`;
+    } else if (!isDraw) {
+      indicator = `✏️${prev||'?'}画→💬 猜(当前)→✏️${next||'?'}画`;
+    } else if (isDraw) {
+      indicator = `💬${prev||'?'}猜→✏️ 画(当前)→💬${next||'?'}猜`;
+    }
+    dom.roundInfo.textContent = indicator || `${data.type === 'draw' ? '✏️ 作画' : '💬 猜词'}`;
     dom.taskInfo.textContent = '';
     dom.drawArea.classList.add('hidden');
     dom.guessArea.classList.add('hidden');
@@ -453,6 +507,7 @@ function connectSocket() {
       dom.drawArea.classList.remove('hidden');
       if (data.yourTask.existingDrawing) {
         // 重连时保留已有画作
+        state.submitted = true;
         resizeCanvas();
         const img = new Image();
         img.onload = () => {
@@ -479,10 +534,19 @@ function connectSocket() {
       dom.drawArea.classList.add('hidden');
       dom.guessArea.classList.remove('hidden');
       dom.guessImage.src = data.yourTask.imageBase64;
-      dom.guessInput.value = '';
-      dom.guessInput.disabled = false;
-      dom.btnSubmitGuess.disabled = false;
-      dom.btnSubmitGuess.textContent = '✅ 确认';
+      if (data.yourTask.existingGuess) {
+        // 重连时已提交猜词
+        state.submitted = true;
+        dom.guessInput.value = data.yourTask.existingGuess;
+        dom.guessInput.disabled = true;
+        dom.btnSubmitGuess.disabled = true;
+        dom.btnSubmitGuess.textContent = '✅ 已提交';
+      } else {
+        dom.guessInput.value = '';
+        dom.guessInput.disabled = false;
+        dom.btnSubmitGuess.disabled = false;
+        dom.btnSubmitGuess.textContent = '✅ 确认';
+      }
       startTimer(data.timeout, () => {
         if (!state.submitted) {
           const text = dom.guessInput.value.trim();
@@ -506,6 +570,30 @@ function connectSocket() {
       dom.guessProgress.textContent = `${data.submitted}/${data.total}`;
       dom.guessWaiting.classList.remove('hidden');
     }
+    // 仅已提交的玩家显示等待弹窗
+    if (state.submitted && data.submittedIds && data.submitted < data.total) {
+      const modal = document.getElementById('waiting-modal');
+      const list = document.getElementById('waiting-player-list');
+      if (modal && list) {
+        let html = '';
+        const submittedIds = data.submittedIds || [];
+        // 优先使用服务端下发的玩家列表（重连时 state.players 可能为空）
+        const playerList = data.players && data.players.length > 0 ? data.players : state.players;
+        playerList.forEach(p => {
+          const isMe = p.id === state.myId;
+          const done = submittedIds.includes(p.id);
+          const av = p.avatar || '😀';
+          let status = '';
+          let color = '';
+          if (isMe && done) { status = '你（已完成）'; color = '#2ecc71'; }
+          else if (done) { status = '已完成'; color = '#2ecc71'; }
+          else { status = state.roundType === 'guess' ? '思考中' : '作画中'; color = '#f39c12'; }
+          html += `<div style="color:${color}"><span style="font-size:20px;margin-right:4px">${av}</span>${p.nickname} — ${status}</div>`;
+        });
+        list.innerHTML = html;
+        modal.classList.remove('hidden');
+      }
+    }
   });
 
   // ---- 轮次结束 ----
@@ -515,6 +603,8 @@ function connectSocket() {
     dom.guessArea.classList.add('hidden');
     dom.drawWaiting.classList.add('hidden');
     dom.guessWaiting.classList.add('hidden');
+    const modal = document.getElementById('waiting-modal');
+    if (modal) modal.classList.add('hidden');
   });
 
   // ---- 回顾 ----
@@ -541,12 +631,27 @@ function connectSocket() {
   });
 
   socket.on('vote_progress', (data) => {
-    if (data.voteBar) {
-      let colored = data.voteBar.replace(/❎/g, '<span style="color:#ff4444">❎</span>');
+    // 正误投票：voteBar已被玩家列表替代，不显示底部状态条
+    // 画作投票：没有 voterStatus 字段，继续显示 voteBar
+    if (!data.voterStatus && data.voteBar) {
+      let colored = data.voteBar.replace(/❎/g, '<span style="color:#ff4444">✖</span>');
       colored = colored.replace(/☐/g, '<span style="display:inline-block;width:1.2em;text-align:center">☐</span>');
       dom.voteProgress.innerHTML = `已投票 ${data.voted}/${data.total}<br><span style="font-size:2em;letter-spacing:8px">${colored}</span>`;
-    } else {
+    } else if (!data.voterStatus) {
       dom.voteProgress.textContent = `已投票 ${data.voted}/${data.total}`;
+    }
+    // 正误投票：更新玩家状态列表
+    if (data.voterStatus) {
+      data.voterStatus.forEach(vs => {
+        const row = document.getElementById('voter-row-' + vs.playerId);
+        if (!row) return;
+        const isMe = vs.playerId === state.myId;
+        let statusText, statusColor;
+        if (vs.vote === 'correct') { statusText = '✅ 确实挺不错的'; statusColor = '#2ecc71'; }
+        else if (vs.vote === 'incorrect') { statusText = '❌ 差点没缓过来'; statusColor = '#ff4444'; }
+        else { statusText = '🤔 思考中'; statusColor = '#f39c12'; }
+        row.innerHTML = `<span style="font-size:20px;margin-right:4px">${vs.avatar || '😀'}</span><span style="color:${isMe?'#e94560':'#ccc'}">${isMe?' (你)':''} ${vs.nickname}</span> <span style="float:right;color:${statusColor}">${statusText}</span>`;
+      });
     }
     // 画作投票：所有人同步显示爱心标记 + 投票者名字
     if (data.votedPlayerId) {
@@ -687,6 +792,7 @@ function connectSocket() {
     showPage('lobby');
     localStorage.setItem('draw_roomId', data.roomId);
     localStorage.setItem('draw_nickname', data.nickname);
+    localStorage.setItem('draw_avatar', data.avatar || '😀');
     state._reconnecting = false;
     const b = document.getElementById('reconnect-banner');
     if (b) b.classList.add('hidden');
@@ -700,6 +806,7 @@ function connectSocket() {
     showPage('lobby');
     localStorage.setItem('draw_roomId', data.roomId);
     localStorage.setItem('draw_nickname', data.nickname);
+    localStorage.setItem('draw_avatar', data.avatar || '😀');
   });
 }
 
@@ -736,11 +843,43 @@ function showReviewStep(data) {
   dom.reviewTextArea.innerHTML = '';
 
   if (data.type === 'chain_intro') {
-    dom.reviewTextArea.innerHTML = `由 <strong>${info.startPlayer}</strong> 发起`;
+    dom.reviewTextArea.innerHTML = `由 <strong>${info.startPlayer}</strong> 发起<br><span style="font-size:20px;color:#aaa">初始词：${info.initWord || '（未知）'}</span>`;
     dom.reviewImage.classList.add('hidden');
     const label = document.getElementById('review-artist-label');
     if (label) label.textContent = '';
+    // 记录当前链条总步数，用于步骤指示器
+    state.currentChainLength = info.chainLength || 0;
     return;
+  }
+
+  // 步骤指示器
+  const total = state.currentChainLength || 0;
+  if (total > 0) {
+    // 根据 data.type 判断当前步骤类型
+    // init_word_and_draw = draw, draw_step/final_draw = draw
+    // guess_normal/guess_timeout = guess, final_guess = guess
+    const isGuess = data.type === 'guess_normal' || data.type === 'guess_timeout' || data.type === 'final_guess';
+    const isDraw = data.type === 'init_word_and_draw' || data.type === 'draw_step' || data.type === 'final_draw';
+    // chainStepIdx: 0 = draw, 1 = guess, 2 = draw, 3 = guess, ...
+    const chainStepIdx = data.stepIndex ? data.stepIndex - 1 : 0;
+    const isLast = chainStepIdx >= total - 1;
+
+    let indicator = '';
+    // 通过 info.player 获取当前步骤的玩家名
+    const curPlayer = info.player || '';
+    if (isDraw && chainStepIdx === 0) {
+      indicator = `✏️ ${curPlayer}画(当前)→💬猜`;
+    } else if (isGuess && isLast) {
+      const prevDrawPlayer = info.player || '';
+      indicator = `✏️画→💬 ${curPlayer}猜(当前)`;
+    } else if (isGuess) {
+      indicator = `✏️画→💬 ${curPlayer}猜(当前)→✏️画`;
+    } else if (isDraw) {
+      indicator = `💬猜→✏️ ${curPlayer}画(当前)→💬猜`;
+    }
+    if (indicator) {
+      dom.reviewChainTitle.innerHTML = `第 ${data.chainIndex+1} 条链条 &nbsp;|&nbsp; <span style="font-size:24px;color:#f39c12">${indicator}</span>`;
+    }
   }
 
   // 画作保持：猜词时不清除上一张画，直到新画出现
@@ -783,18 +922,49 @@ function showVoteUI(data) {
 
   if (data.type === 'accuracy') {
     dom.voteTitle.textContent = '第 ' + (data.chainIndex+1) + ' 条 · 正误投票';
+    // 初始词和最终猜词
     const p = document.createElement('p');
-    p.innerHTML = `初始词：<strong>${info.initWord}</strong><br>最终猜词：<strong>${info.finalGuess}</strong><br>你觉得相似吗？`;
+    p.style.marginBottom = '12px';
+    p.innerHTML = `初始词：<strong>${info.initWord}</strong> &nbsp;→&nbsp; 最终猜词：<strong>${info.finalGuess}</strong>`;
     dom.voteBody.appendChild(p);
+    // 玩家列表
+    const listDiv = document.createElement('div');
+    listDiv.id = 'accuracy-voter-list';
+    listDiv.style.cssText = 'text-align:left;font-size:22px;line-height:2.2;margin:8px 0 16px;padding:10px;background:#1a1a3e;border-radius:10px';
+    // 初始渲染：全部显示思考中（优先使用服务端下发的玩家列表，避免重连时 state.players 为空）
+    const playerList = info.players && info.players.length > 0 ? info.players : state.players;
+    playerList.forEach(pl => {
+      const row = document.createElement('div');
+      row.id = 'voter-row-' + pl.id;
+      const isMe = pl.id === state.myId;
+      const av = pl.avatar || '😀';
+      row.innerHTML = `<span style="font-size:20px;margin-right:4px">${av}</span><span style="color:${isMe?'#e94560':'#ccc'}">${isMe?' (你)':''} ${pl.nickname}</span> <span style="float:right;color:#f39c12">🤔 思考中</span>`;
+      listDiv.appendChild(row);
+    });
+    dom.voteBody.appendChild(listDiv);
+
+    // 投票按钮
     const btnDiv = document.createElement('div');
     btnDiv.className = 'vote-buttons';
     const btnCorrect = document.createElement('button');
     btnCorrect.className = 'vote-btn vote-btn-correct';
-    btnCorrect.textContent = '✅ 相似';
+    btnCorrect.textContent = '✅ 相符';
+    const btnIncorrect = document.createElement('button');
+    btnIncorrect.className = 'vote-btn vote-btn-incorrect';
+    btnIncorrect.textContent = '✖ 不相符';
     const confirmMsg = document.createElement('p');
     confirmMsg.id = 'vote-confirm-msg';
     confirmMsg.style.cssText = 'color:#2ecc71;font-weight:bold;margin-top:10px;display:none;';
     dom.voteBody.appendChild(confirmMsg);
+
+    // 如果已投票（重连场景），禁用按钮并标记
+    if (info.myVote) {
+      voted = true;
+      btnCorrect.disabled = true;
+      btnIncorrect.disabled = true;
+      confirmMsg.textContent = '✅ 已投票，等待其他玩家...';
+      confirmMsg.style.display = 'block';
+    }
 
     btnCorrect.onclick = () => {
       if (voted) return;
@@ -805,9 +975,6 @@ function showVoteUI(data) {
       confirmMsg.textContent = '✅ 已投票，等待其他玩家...';
       confirmMsg.style.display = 'block';
     };
-    const btnIncorrect = document.createElement('button');
-    btnIncorrect.className = 'vote-btn vote-btn-incorrect';
-    btnIncorrect.textContent = '❌ 不相似';
     btnIncorrect.onclick = () => {
       if (voted) return;
       voted = true;
@@ -820,6 +987,8 @@ function showVoteUI(data) {
     btnDiv.appendChild(btnCorrect);
     btnDiv.appendChild(btnIncorrect);
     dom.voteBody.appendChild(btnDiv);
+
+
   } else if (data.type === 'artwork') {
     dom.voteTitle.textContent = '第 ' + (data.chainIndex+1) + ' 条 · 画作人气投票';
     const p = document.createElement('p');
@@ -962,6 +1131,57 @@ function setupChat() {
 // ================================================================
 //   入口事件
 // ================================================================
+// 头像选择
+const AVATARS = ['😀','😃','😄','😁','😆','😂','🤣','😊','😇','🙂','😉','😌','😍','🥰','😘','😗',
+  '😎','🤩','🧐','🤗','🤭','🤔','🤫','😐','😑','😶','🙄','😏','😤','😠','😡','🤬',
+  '😢','😭','😱','😳','🥵','🥶','😰','😥','🤧','🤮','🤡','👻','💀','☠️','👽','🤖',
+  '🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐸','🦁','🐮','🐷','🐒','🐔','🐧',
+  '🐦','🐤','🦆','🦅','🦉','🦇','🐺','🐗','🐴','🦄','🐝','🐛','🦋','🐌','🐞','🐜',
+  '🍎','🍊','🍋','🍌','🍉','🍇','🍓','🍒','🍑','🥭','🍍','🥝','🍅','🥑','🌽','🍄',
+  '⭐','🌟','✨','🔥','💥','💫','🌈','🌊','🍕','🍔','🌮','🎂','🍦','☕','⚽','🏀',
+  '🎨','🎵','🎸','🎹','🎮','🎯','🎪','🎭','🚀','✈️','🚗','🚲','🏠','🔮','💎','🎁'];
+
+let selectedAvatar = AVATARS[0];
+
+function initAvatarSelector() {
+  const trigger = document.getElementById('avatar-trigger');
+  const panel = document.getElementById('avatar-panel');
+  const grid = document.getElementById('avatar-grid');
+  if (!grid || !trigger || !panel) return;
+
+  // 点击触发器显示/隐藏面板，隐藏提示文字
+  trigger.onclick = () => {
+    panel.classList.toggle('hidden');
+    const hint = document.getElementById('avatar-hint');
+    if (hint) hint.style.display = 'none';
+  };
+  // 点击外部关闭
+  document.addEventListener('click', (e) => {
+    if (!panel.classList.contains('hidden') && !panel.contains(e.target) && e.target !== trigger) {
+      panel.classList.add('hidden');
+    }
+  });
+
+  // 填充头像
+  AVATARS.forEach(emoji => {
+    const el = document.createElement('span');
+    el.textContent = emoji;
+    el.style.cssText = 'font-size:28px;cursor:pointer;text-align:center;padding:3px;border-radius:6px;transition:background .1s';
+    el.onmouseenter = () => { el.style.background = '#444'; };
+    el.onmouseleave = () => { el.style.background = emoji === selectedAvatar ? '#e94560' : 'transparent'; };
+    el.onclick = () => {
+      selectedAvatar = emoji;
+      trigger.textContent = emoji;
+      panel.classList.add('hidden');
+      grid.querySelectorAll('span').forEach(s => s.style.background = 'transparent');
+      el.style.background = '#e94560';
+    };
+    if (emoji === selectedAvatar) el.style.background = '#e94560';
+    grid.appendChild(el);
+  });
+  trigger.textContent = selectedAvatar;
+}
+
 function setupEntryUI() {
   // ---- 创建房间 — 直接创建，无需额外输入 ----
   dom.btnCreateRoom.addEventListener('click', () => {
@@ -970,7 +1190,7 @@ function setupEntryUI() {
     dom.entryError.classList.add('hidden');
     dom.entryJoinFields.classList.add('hidden');
 
-    socket.emit('create_room', { nickname }, (res) => {
+    socket.emit('create_room', { nickname, avatar: selectedAvatar }, (res) => {
       if (res && res.error) {
         dom.loadingOverlay.classList.add('hidden');
         dom.entryError.textContent = res.error;
@@ -1010,7 +1230,7 @@ function doJoinRoom() {
   if (!nickname) { dom.entryError.textContent = '请输入昵称'; dom.entryError.classList.remove('hidden'); return; }
   if (roomId.length !== 6) { dom.entryError.textContent = '房间号为6位'; dom.entryError.classList.remove('hidden'); return; }
   dom.entryError.classList.add('hidden');
-  socket.emit('join_room', { roomId, nickname }, (res) => {
+  socket.emit('join_room', { roomId, nickname, avatar: selectedAvatar }, (res) => {
     if (res && res.error) {
       dom.loadingOverlay.classList.add('hidden');
       dom.entryError.textContent = res.error;
@@ -1033,7 +1253,7 @@ function updateLobbyUI(data) {
   dom.playerList.innerHTML = '';
   data.players.forEach(p => {
     const li = document.createElement('li');
-    li.textContent = p.nickname;
+    li.innerHTML = `<span style="font-size:24px;margin-right:6px">${p.avatar || '😀'}</span> ${p.nickname}`;
     if (p.isOwner) {
       li.innerHTML += ' <span class="owner-badge">房主</span>';
     }
@@ -1202,6 +1422,7 @@ window.addEventListener('resize', () => {
 function init() {
   connectSocket();
   initCanvas();
+  initAvatarSelector();
   setupChat();
   setupEntryUI();
   setupSettings();

@@ -1,3 +1,5 @@
+$ node -e "const fs=require('fs');const c=fs.readFileSync('server.js','utf8');const start=c.indexOf('作画/猜词阶段：先重发 round_start');const end=c.indexOf('} else if (room.state === .review.)',start);console.log(c.substring(start,end));"
+[exit 0]
 /**
  * 传画接龙 — 后端服务器
  * Express + Socket.IO 实现多人联机绘画猜词接力游戏
@@ -74,7 +76,7 @@ function generateChains(players) {
 // ============================================================
 // 房间对象工厂
 // ============================================================
-function createRoom(id, socket, nickname, password, avatar) {
+function createRoom(id, socket, nickname, password) {
   return {
     id,
     name: `${nickname}的房间`,
@@ -82,7 +84,6 @@ function createRoom(id, socket, nickname, password, avatar) {
     players: [{
       id: socket.id,
       nickname,
-      avatar: avatar || '😀',
       isOwner: true,
       connected: true
     }],
@@ -126,7 +127,6 @@ function broadcastRoomUpdate(room) {
     players: room.players.map(p => ({
       id: p.id,
       nickname: p.nickname,
-      avatar: p.avatar || '😀',
       isOwner: p.isOwner,
       connected: p.connected,
       settling: p.settling || false
@@ -147,14 +147,6 @@ function systemToast(room, message, duration = 3000) {
 // ============================================================
 // 倒计时管理
 // ============================================================
-function getRemaining(room, defaultDur) {
-  if (room.timerStart) {
-    const elapsed = Date.now() - room.timerStart;
-    return Math.max(1, Math.ceil((defaultDur * 1000 - elapsed) / 1000));
-  }
-  return defaultDur;
-}
-
 function clearRoomTimer(room) {
   if (room.timer) {
     clearTimeout(room.timer);
@@ -219,7 +211,7 @@ function nextStage(room) {
         round: round + 1,
         totalRounds,
         type: 'draw',
-        timeout: getRemaining(room, room.config.drawTime),
+        timeout,
         yourTask: { word: wordToDraw },
         chainIndex,
         prevPlayer: prevStepPlayer,
@@ -236,7 +228,7 @@ function nextStage(room) {
         round: round + 1,
         totalRounds,
         type: 'guess',
-        timeout: getRemaining(room, room.config.guessTime),
+        timeout,
         yourTask: {
           imageBase64: imageData,
           fromPlayer: chain.steps[round - 1].nickname
@@ -255,7 +247,6 @@ function nextStage(room) {
   });
 
   // 设置超时
-  room.timerStart = Date.now();
   room.timer = setTimeout(() => {
     handleRoundTimeout(room);
   }, timeout * 1000);
@@ -511,13 +502,13 @@ function startVotingPhase(room) {
   io.to(room.id).emit('vote_request', {
     type: 'accuracy',
     chainIndex,
-    timeout: getRemaining(room, 20),
+    timeout: 20,
     data: {
       initWord,
       finalGuess,
       isSystemGenerated: isSystem,
       drawerNickname: lastStep?.nickname || '',
-      players: room.players.map(p => ({ id: p.id, nickname: p.nickname, avatar: p.avatar || '😀' }))
+      players: room.players.map(p => ({ id: p.id, nickname: p.nickname }))
     }
   });
 
@@ -569,7 +560,7 @@ function handleAccuracyVoteTimeout(room) {
   io.to(room.id).emit('vote_request', {
     type: 'artwork',
     chainIndex,
-    timeout: getRemaining(room, 20),
+    timeout: 20,
     data: { artworks }
   });
   room.timerStart = Date.now();
@@ -651,7 +642,7 @@ function handleAccuracyVoteTimeout(room) {
   io.to(room.id).emit('vote_request', {
     type: 'artwork',
     chainIndex,
-    timeout: getRemaining(room, 20),
+    timeout: 20,
     data: { artworks }
   });
   room.timerStart = Date.now();
@@ -745,7 +736,7 @@ io.on('connection', (socket) => {
   // ----- 创建房间 -----
   socket.on('create_room', (data, callback) => {
     try {
-      const { nickname, roomName, password, avatar } = data;
+      const { nickname, roomName, password } = data;
       if (!nickname || nickname.trim().length === 0) {
         return callback?.({ error: '昵称不能为空' });
       }
@@ -754,7 +745,7 @@ io.on('connection', (socket) => {
       }
 
       const roomId = generateRoomId();
-      const room = createRoom(roomId, socket, nickname.trim(), password, avatar);
+      const room = createRoom(roomId, socket, nickname.trim(), password);
 
       rooms.set(roomId, room);
       socket.join(roomId);
@@ -762,7 +753,7 @@ io.on('connection', (socket) => {
       console.log(`[创建房间] ${roomId} 房主: ${nickname}`);
       callback?.({ success: true, roomId });
 
-      socket.emit('create_success', { roomId, nickname: nickname.trim(), avatar: avatar || '😀' });
+      socket.emit('create_success', { roomId, nickname: nickname.trim() });
       broadcastRoomUpdate(room);
     } catch (err) {
       console.error('[创建房间错误]', err);
@@ -774,7 +765,7 @@ io.on('connection', (socket) => {
   // ----- 加入房间 -----
   socket.on('join_room', (data, callback) => {
     try {
-      const { roomId, nickname, password, avatar } = data;
+      const { roomId, nickname, password } = data;
       if (!nickname || nickname.trim().length === 0) {
         return callback?.({ error: '昵称不能为空' });
       }
@@ -805,7 +796,6 @@ io.on('connection', (socket) => {
       room.players.push({
         id: socket.id,
         nickname: finalNick,
-        avatar: avatar || '😀',
         isOwner: false,
         connected: true
       });
@@ -814,7 +804,7 @@ io.on('connection', (socket) => {
       console.log(`[加入房间] ${roomId} ${nickname}`);
 
       callback?.({ success: true, roomId, nickname: finalNick });
-      socket.emit('join_success', { roomId, nickname: finalNick, avatar: avatar || '😀' });
+      socket.emit('join_success', { roomId, nickname: finalNick });
 
       broadcastRoomUpdate(room);
       io.to(room.id).emit('player_joined', {
@@ -1016,7 +1006,6 @@ io.on('connection', (socket) => {
     systemToast(room, '📝 起点玩家正在选词...', 2000);
 
     // 10秒超时
-    room.timerStart = Date.now();
     room.timer = setTimeout(() => {
       room.chains.forEach((chain) => {
         if (!room.selectedWords.has(chain.startPlayerId)) {
@@ -1123,490 +1112,6 @@ io.on('connection', (socket) => {
     const chainIndex = room.chains.indexOf(chain);
     if (room.chainGuesses[chainIndex] && room.chainGuesses[chainIndex][chainStepIndex]) return; // 已提交
 
-    if (!room.chainGuesses[chainIndex]) room.chainGuesses[chainIndex] = [];
-    // data 是客户端传来的猜测词语字符串
-    room.chainGuesses[chainIndex][chainStepIndex] = {
-      word: data,
-      playerId: socket.id,
-      nickname: room.players.find(p => p.id === socket.id)?.nickname || '未知',
-      isSystemGenerated: false,
-      isTimeout: false
-    };
+    if (!ro
 
-    room.submissions.add(socket.id);
-
-    broadcastSubmitProgress(room);
-    checkAllSubmitted(room);
-  });
-
-  // ----- 投票（正误）-----
-  socket.on('vote_accuracy', (data) => {
-    const room = findRoomBySocket(socket);
-    if (!room) return;
-
-    const { chainIndex, vote } = data;
-    if (room.currentChainIndex !== chainIndex) return;
-    if (room.votesAccuracy.has(socket.id)) return; // 已投票
-
-    room.votesAccuracy.set(socket.id, vote);
-    // 生成可视化投票状态条：√=相似 ×=不相似 口=未投票
-    // 可视化投票状态：✅=相似 ✖=不相似 口=未投票
-    let voteBar = '';
-    room.players.forEach(p => {
-      const v = room.votesAccuracy.get(p.id);
-      if (v === 'correct') voteBar += '✅';
-      else if (v === 'incorrect') voteBar += '✖';
-      else voteBar += '☐';
-    });
-    const voterStatus = room.players.map(p => ({
-      playerId: p.id,
-      nickname: p.nickname,
-      avatar: p.avatar || '😀',
-      vote: room.votesAccuracy.get(p.id) || null
-    }));
-    io.to(room.id).emit('vote_progress', {
-      voted: room.votesAccuracy.size,
-      total: room.players.length,
-      voteBar,
-      voterStatus
-    });
-
-    // 全部投完且剩余 >5s 则缩短为5s
-    const elapsed = Date.now() - (room.timerStart || Date.now());
-    const remaining = Math.max(0, 20000 - elapsed);
-    if (room.votesAccuracy.size >= room.players.length && room.timer && remaining > 5000) {
-      clearRoomTimer(room);
-      room.timer = setTimeout(() => handleAccuracyVoteTimeout(room), 5000);
-      io.to(room.id).emit('timer_sync', { remaining: 5 });
-    }
-  });
-
-  // ----- 投票（画作人气）-----
-  socket.on('vote_artwork', (data) => {
-    const room = findRoomBySocket(socket);
-    if (!room) return;
-
-    const { chainIndex, votedPlayerId } = data;
-    if (room.currentChainIndex !== chainIndex) return;
-    if (room.votesArtwork.has(socket.id)) return; // 已投票
-
-    room.votesArtwork.set(socket.id, votedPlayerId);
-    // 找出投票者昵称
-    const voter = room.players.find(p => p.id === socket.id);
-    const voterNickname = voter ? voter.nickname : '未知';
-    io.to(room.id).emit('vote_progress', {
-      voted: room.votesArtwork.size,
-      total: room.players.length,
-      votedPlayerId,
-      voterNickname
-    });
-
-    // 全部投完且剩余 >5s 则缩短为5s
-    const elapsed = Date.now() - (room.timerStart || Date.now());
-    const remaining = Math.max(0, 20000 - elapsed);
-    if (room.votesArtwork.size >= room.players.length && room.timer && remaining > 5000) {
-      clearRoomTimer(room);
-      room.timer = setTimeout(() => handleArtworkVoteTimeout(room), 5000);
-      io.to(room.id).emit('timer_sync', { remaining: 5 });
-    }
-  });
-
-  // ----- 聊天 -----
-  socket.on('chat_msg', (text) => {
-    const room = findRoomBySocket(socket);
-    if (!room) return;
-
-    const player = room.players.find(p => p.id === socket.id);
-    if (!player) return;
-
-    text = (text || '').trim();
-    if (text.length === 0 || text.length > 200) return;
-
-    const msg = {
-      nickname: player.nickname,
-      text,
-      timestamp: Date.now()
-    };
-    room.chat.push(msg);
-    if (room.chat.length > 200) room.chat.splice(0, 50);
-
-    io.to(room.id).emit('chat_msg_broadcast', msg);
-  });
-
-  // ----- 断线处理 -----
-  socket.on('disconnect', () => {
-    const oldId = socket.id;
-    console.log(`[断线] ${oldId} 已断开`);
-
-    for (const [roomId, room] of rooms) {
-      const playerIndex = room.players.findIndex(p => p.id === oldId);
-      if (playerIndex === -1) continue;
-
-      const player = room.players[playerIndex];
-      player.connected = false;
-
-      // 保存断线信息供重连用（游戏中的房间保留玩家数据）
-      if (!room._disconnected) room._disconnected = new Map();
-      room._disconnected.set(oldId, { playerId: oldId, nickname: player.nickname });
-
-      if (room.state === 'lobby') {
-        room.players.splice(playerIndex, 1);
-        if (room.players.length === 0) {
-          rooms.delete(roomId);
-          console.log(`[清理房间] ${roomId} 已无玩家`);
-          return;
-        }
-        if (player.isOwner && room.players.length > 0) {
-          room.players[0].isOwner = true;
-          systemToast(room, `${room.players[0].nickname} 成为新房主`, 3000);
-        }
-        io.to(roomId).emit('player_left', {
-          nickname: player.nickname,
-          playerCount: room.players.length
-        });
-        broadcastRoomUpdate(room);
-      } else {
-        // 游戏中保留玩家数据
-        io.to(roomId).emit('player_left', {
-          nickname: player.nickname,
-          playerCount: room.players.filter(p => p.connected).length
-        });
-        systemToast(room, `${player.nickname} 断线了😢`, 3000);
-        broadcastRoomUpdate(room);
-      }
-      return;
-    }
-  });
-
-  // ----- 重连到房间 -----
-  socket.on('reconnect_to_room', (data) => {
-    const { roomId, nickname } = data;
-    if (!roomId || !nickname) return;
-
-    const room = rooms.get(roomId);
-    if (!room) return socket.emit('room_error', { message: '房间已不存在' });
-
-    // 找该昵称的玩家
-    let player = room.players.find(p => p.nickname === nickname);
-    // 如果找不到但房间在大厅状态，允许重新加入（可能之前被移除了）
-    if (!player) {
-      if (room.state === 'lobby') {
-        const finalNick = nickname;
-        room.players.push({ id: socket.id, nickname: finalNick, avatar: '😀', isOwner: false, connected: true });
-        socket.join(roomId);
-        console.log(`[重连·重新加入] ${nickname} 回到房间 ${roomId}`);
-        socket.emit('join_success', { roomId, nickname: finalNick });
-        broadcastRoomUpdate(room);
-        systemToast(room, `${nickname} 重新连接了`, 3000);
-        return;
-      }
-      return socket.emit('room_error', { message: '找不到你的角色' });
-    }
-
-    // 先保存旧 ID，再更新 socket.id
-    const oldPlayerId = player.id;
-    player.id = socket.id;
-    player.connected = true;
-    socket.join(roomId);
-
-    // 迁移得分记录：旧 ID → 新 ID
-    [room.scoreA, room.scoreB].forEach(scoreMap => {
-      if (!scoreMap) return;
-      if (scoreMap.has(oldPlayerId)) {
-        scoreMap.set(socket.id, scoreMap.get(oldPlayerId));
-        scoreMap.delete(oldPlayerId);
-      }
-    });
-
-    // 迁移投票记录：旧 ID → 新 ID
-    [room.votesAccuracy, room.votesArtwork].forEach(voteMap => {
-      if (!voteMap) return;
-      if (voteMap.has(oldPlayerId)) {
-        voteMap.set(socket.id, voteMap.get(oldPlayerId));
-        voteMap.delete(oldPlayerId);
-      }
-    });
-
-    // 迁移选词记录：旧 ID → 新 ID
-    if (room.selectedWords && room.selectedWords.has(oldPlayerId)) {
-      room.selectedWords.set(socket.id, room.selectedWords.get(oldPlayerId));
-      room.selectedWords.delete(oldPlayerId);
-    }
-    // 迁移提交记录
-    if (room.submissions && room.submissions.has(oldPlayerId)) {
-      room.submissions.delete(oldPlayerId);
-      room.submissions.add(socket.id);
-    }
-
-    // 更新所有链条步骤中的 playerId 为新 ID，确保 submit_drawing/guess 能匹配
-    room.chains.forEach(chain => {
-      chain.steps.forEach(step => {
-        if (step.playerId === oldPlayerId) step.playerId = socket.id;
-      });
-      if (chain.startPlayerId === oldPlayerId) chain.startPlayerId = socket.id;
-    });
-
-    console.log(`[重连] ${nickname} 回到房间 ${roomId}`);
-
-    if (room.state === 'lobby' || room.state === 'finished') {
-      socket.emit('join_success', { roomId });
-      if (room.state === 'finished') {
-        // 如果在结算页，重发结算数据
-        let maxA = 0, maxB = 0;
-        const topA = [], topB = [];
-        room.scoreA.forEach((s, pid) => { const p = room.players.find(x => x.id === pid); if (s > maxA) { maxA = s; topA.length = 0; } if (s >= maxA && p) topA.push(p.nickname); });
-        room.scoreB.forEach((s, pid) => { const p = room.players.find(x => x.id === pid); if (s > maxB) { maxB = s; topB.length = 0; } if (s >= maxB && p) topB.push(p.nickname); });
-        socket.emit('game_finished', {
-          titles: { accuracyBest: topA, artworkBest: topB }
-        });
-      }
-    } else {
-      // 游戏中：发送当前状态让客户端恢复
-      let totalRounds = 2 * room.K;
-      socket.emit('reconnect_game', {
-        roomId,
-        state: room.state,
-        K: room.K,
-        currentRound: room.currentRound,
-        totalRounds,
-        config: room.config
-      });
-
-      // 根据当前状态发送对应任务
-      if (room.state === 'word_select') {
-        // 选词阶段：重发 word_select（如果该玩家是起点）
-        room.chains.forEach((chain, ci) => {
-          if (chain.startNickname === nickname) {
-            const candidates = room.wordCandidates.get(chain.startPlayerId);
-            if (candidates) {
-              socket.emit('word_select', { candidates, timeout: 5, chainIndex: ci });
-            }
-          }
-        });
-      } else if (room.state.startsWith('draw_') || room.state.startsWith('guess_')) {
-        // 作画/猜词阶段：先重发 round_start（设置 state.submitted），再发 submit_progress（显示弹窗）
-        const submittedIds = [];
-        room.submissions.forEach(id => submittedIds.push(id));
-        const round = room.currentRound;
-        const isDraw = round % 2 === 0;
-        const chainStepIndex = Math.floor(round / 2);
-        room.chains.forEach((chain, chainIndex) => {
-          const step = chain.steps[round];
-          if (!step || step.nickname !== nickname) return;
-          if (isDraw) {
-            let wordToDraw;
-            if (round === 0) {
-              wordToDraw = room.selectedWords.get(chain.startPlayerId) || pickRandomWord();
-            } else {
-              const prevGuess = room.chainGuesses[chainIndex] && room.chainGuesses[chainIndex][chainStepIndex - 1];
-              wordToDraw = prevGuess ? prevGuess.word : pickRandomWord();
-            }
-            const existingDraw = room.chainDrawings[chainIndex]?.[chainStepIndex]?.data || null;
-            socket.emit('round_start', {
-              round: round + 1, totalRounds, type: 'draw',
-              timeout: getRemaining(room, room.config.drawTime),
-              yourTask: { word: wordToDraw, existingDrawing: existingDraw },
-              chainIndex
-            });
-          } else {
-            const prevDraw = room.chainDrawings[chainIndex] && room.chainDrawings[chainIndex][chainStepIndex];
-            // 检查该玩家是否已提交猜词
-            const existingGuessData = room.chainGuesses[chainIndex]?.[chainStepIndex];
-            const hasGuessed = !!(existingGuessData && existingGuessData.word);
-            socket.emit('round_start', {
-              round: round + 1, totalRounds, type: 'guess',
-              timeout: getRemaining(room, room.config.guessTime),
-              yourTask: {
-                imageBase64: prevDraw?.data || null,
-                fromPlayer: chain.steps[round - 1]?.nickname || '',
-                existingGuess: hasGuessed ? existingGuessData.word : null
-              },
-              chainIndex
-            });
-          }
-        });
-        // 如果剩余时间极少，直接触发超时处理，避免卡死
-        let timerExpired = false;
-        if (room.timerStart) {
-          const elapsed = Date.now() - room.timerStart;
-          const totalDur = (isDraw ? room.config.drawTime : room.config.guessTime) * 1000;
-          if (elapsed >= totalDur) {
-            clearRoomTimer(room);
-            handleRoundTimeout(room);
-            timerExpired = true;
-          }
-        }
-        // 同步倒计时，让客户端定时器从服务端的剩余时间开始
-        socket.emit('timer_sync', { remaining: getRemaining(room, isDraw ? room.config.drawTime : room.config.guessTime) });
-        // 再发送当前提交进度（仅当确实有提交时才发）
-        if (!timerExpired && room.submissions.size > 0) socket.emit('submit_progress', {
-          submitted: room.submissions.size,
-          total: room.chains.length,
-          submittedIds,
-          players: room.players.map(p => ({ id: p.id, nickname: p.nickname, avatar: p.avatar || '😀' }))
-        });
-      } else if (room.state === 'review') {
-        // 回顾阶段：重发 review_start，并回放已展示的步骤
-        socket.emit('review_start', { totalChains: room.chains.length });
-        // 重放当前链条已发送的 review_step（快速回放，1 秒间隔）
-        if (room.reviewLog && room.reviewLog.length > 0) {
-          const currentChainSteps = room.reviewLog.filter(
-            r => r.chainIndex === room.currentChainIndex
-          );
-          currentChainSteps.forEach((step, idx) => {
-            setTimeout(() => {
-              socket.emit('review_step', step);
-            }, idx * 1000);
-          });
-        }
-        // 如果在投票阶段，重发 vote_request
-        if (room.votePhase === 'accuracy') {
-          const chainIndex = room.currentChainIndex;
-          const chain = room.chains[chainIndex];
-          const initWord = room.chainDrawings[chainIndex]?.[0]?.word || '';
-          const totalSteps = chain.steps.length;
-          const lastStep = chain.steps[totalSteps - 1];
-          let finalGuess = '', isSystem = false;
-          if (lastStep.type === 'guess') {
-            const guessIndex = Math.floor((totalSteps - 2) / 2);
-            const gd = room.chainGuesses[chainIndex]?.[guessIndex];
-            finalGuess = gd?.word || '';
-            isSystem = gd?.isSystemGenerated || false;
-          }
-                    const myCurrentVote = room.votesAccuracy.get(socket.id) || null;
-          socket.emit('vote_request', {
-            type: 'accuracy', chainIndex, timeout: getRemaining(room, 20),
-            data: { initWord, finalGuess, isSystemGenerated: isSystem, drawerNickname: lastStep?.nickname || '',
-              players: room.players.map(p => ({ id: p.id, nickname: p.nickname, avatar: p.avatar || '😀' })),
-              myVote: myCurrentVote }
-          });
-          // 同步已有投票进度
-          let voteBar = '';
-          room.players.forEach(p => {
-            const v = room.votesAccuracy.get(p.id);
-            if (v === 'correct') voteBar += '✅';
-            else if (v === 'incorrect') voteBar += '✖';
-            else voteBar += '☐';
-          });
-          const voterStatus2 = room.players.map(p => ({
-            playerId: p.id, nickname: p.nickname, avatar: p.avatar || '😀',
-            vote: room.votesAccuracy.get(p.id) || null
-          }));
-          socket.emit('vote_progress', { voted: room.votesAccuracy.size, total: room.players.length, voteBar, voterStatus: voterStatus2 });
-        } else if (room.votePhase === 'artwork') {
-          const chainIndex = room.currentChainIndex;
-          const chain = room.chains[chainIndex];
-          const artworks = [];
-          for (let si = 0; si < chain.steps.length; si += 2) {
-            const di = Math.floor(si / 2);
-            const dd = room.chainDrawings[chainIndex]?.[di];
-            if (dd) artworks.push({
-              playerId: chain.steps[si].playerId,
-              nickname: chain.steps[si].nickname,
-              drawing: dd.data,
-              prompt: dd.word || ''
-            });
-          }
-          socket.emit('vote_request', {
-            type: 'artwork', chainIndex, timeout: 20,
-            data: { artworks }
-          });
-          // 同步已有画作投票
-          room.votesArtwork.forEach((votedPlayerId, voterId) => {
-            const voter = room.players.find(p => p.id === voterId);
-            const target = room.players.find(p => p.id === votedPlayerId);
-            if (voter && target) {
-              socket.emit('vote_progress', {
-                voted: room.votesArtwork.size, total: room.players.length,
-                votedPlayerId, voterNickname: voter.nickname
-              });
-            }
-          });
-        }
-      }
-    }
-    broadcastRoomUpdate(room);
-    systemToast(room, `${nickname} 重新连接了`, 3000);
-  });
-
-  // ----- 重连处理 -----
-  socket.on('reconnect_request', (data, callback) => {
-    const { roomId, previousId } = data;
-    const room = rooms.get(roomId);
-    if (!room) return callback?.({ error: '房间已不存在' });
-
-    const player = room.players.find(p => p.id === previousId);
-    if (!player) return callback?.({ error: '未找到玩家' });
-
-    player.id = socket.id;
-    player.connected = true;
-    socket.join(roomId);
-
-    callback?.({ success: true, roomData: room });
-    broadcastRoomUpdate(room);
-  });
-
-  // ----- 返回大厅 -----
-  socket.on('back_to_lobby', () => {
-    const room = findRoomBySocket(socket);
-    if (!room) return;
-
-    const player = room.players.find(p => p.id === socket.id);
-    if (!player?.isOwner) return;
-
-    room.state = 'lobby';
-    room.currentRound = 0;
-    room.chains = [];
-    room.chainDrawings = [];
-    room.chainGuesses = [];
-    room.scoreA = new Map();
-    room.scoreB = new Map();
-    room.submissions = new Set();
-
-    clearRoomTimer(room);
-    broadcastRoomUpdate(room);
-    systemToast(room, '🔄 已返回大厅，可以重新开始', 3000);
-  });
-});
-
-// ============================================================
-// 辅助函数
-// ============================================================
-
-function findRoomBySocket(socket) {
-  for (const room of rooms.values()) {
-    if (room.players.find(p => p.id === socket.id)) return room;
-  }
-  return null;
-}
-
-function broadcastSubmitProgress(room) {
-  const submitted = room.submissions.size;
-  const total = room.chains.length;
-  const submittedIds = [];
-  room.submissions.forEach(id => submittedIds.push(id));
-  io.to(room.id).emit('submit_progress', {
-    submitted,
-    total,
-    submittedIds,
-    players: room.players.map(p => ({ id: p.id, nickname: p.nickname, avatar: p.avatar || '😀' }))
-  });
-}
-
-function checkAllSubmitted(room) {
-  const allSubmitted = room.submissions.size >= room.chains.length;
-  if (allSubmitted) {
-    advanceToNextRound(room);
-  }
-}
-
-// ============================================================
-// 启动服务器
-// ============================================================
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`\n  🎨 传画接龙服务器已启动`);
-  console.log(`  🌐 http://localhost:${PORT}`);
-  console.log(`  📝 当前词库: ${currentWordLib} (${words.length} 词)`);
-  console.log(`  📚 可用词库: ${wordLibraries.map(l=>l.name+'('+l.count+'词)').join(', ')}\n`);
-});
+[… truncated 8207 chars …]

@@ -1,0 +1,1057 @@
+$ node -e "const fs=require('fs');const c=fs.readFileSync('server.js','utf8');let roundStart=c.indexOf('playerSocket.emit');let ctx='';while(ctx=c.indexOf(\"emit('round_start'\",ctx+1)>=0){const s=c.lastIndexOf('playerSocket.',ctx);const e=c.indexOf('});',ctx)+3;console.log('---AT',ctx,'---');console.log(c.substring(s,e));}"
+[killed after timeout]
+---AT true ---
+/**
+ * 传画接龙 — 后端服务器
+ * Express + Socket.IO 实现多人联机绘画猜词接力游戏
+ */
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const words = require('./words');
+const wordLibraries = words.libraries || [];
+let currentWordLib = '【简体中文】默认'; // 当前活动的词库名称
+
+// ============================================================
+// Express 配置
+// ============================================================
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  maxHttpBufferSize: 5 * 1024 * 1024 // 5MB 限制，用于画作 base64
+});
+---AT true ---
+/**
+ * 传画接龙 — 后端服务器
+ * Express + Socket.IO 实现多人联机绘画猜词接力游戏
+ */
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const words = require('./words');
+const wordLibraries = words.libraries || [];
+let currentWordLib = '【简体中文】默认'; // 当前活动的词库名称
+
+// ============================================================
+// Express 配置
+// ============================================================
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  maxHttpBufferSize: 5 * 1024 * 1024 // 5MB 限制，用于画作 base64
+});
+---AT true ---
+/**
+ * 传画接龙 — 后端服务器
+ * Express + Socket.IO 实现多人联机绘画猜词接力游戏
+ */
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const words = require('./words');
+const wordLibraries = words.libraries || [];
+let currentWordLib = '【简体中文】默认'; // 当前活动的词库名称
+
+// ============================================================
+// Express 配置
+// ============================================================
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  maxHttpBufferSize: 5 * 1024 * 1024 // 5MB 限制，用于画作 base64
+});
+---AT true ---
+/**
+ * 传画接龙 — 后端服务器
+ * Express + Socket.IO 实现多人联机绘画猜词接力游戏
+ */
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const words = require('./words');
+const wordLibraries = words.libraries || [];
+let currentWordLib = '【简体中文】默认'; // 当前活动的词库名称
+
+// ============================================================
+// Express 配置
+// ============================================================
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  maxHttpBufferSize: 5 * 1024 * 1024 // 5MB 限制，用于画作 base64
+});
+---AT true ---
+/**
+ * 传画接龙 — 后端服务器
+ * Express + Socket.IO 实现多人联机绘画猜词接力游戏
+ */
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const words = require('./words');
+const wordLibraries = words.libraries || [];
+let currentWordLib = '【简体中文】默认'; // 当前活动的词库名称
+
+// ============================================================
+// Express 配置
+// ============================================================
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  maxHttpBufferSize: 5 * 1024 * 1024 // 5MB 限制，用于画作 base64
+});
+---AT true ---
+/**
+ * 传画接龙 — 后端服务器
+ * Express + Socket.IO 实现多人联机绘画猜词接力游戏
+ */
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const words = require('./words');
+const wordLibraries = words.libraries || [];
+let currentWordLib = '【简体中文】默认'; // 当前活动的词库名称
+
+// ============================================================
+// Express 配置
+// ============================================================
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  maxHttpBufferSize: 5 * 1024 * 1024 // 5MB 限制，用于画作 base64
+});
+---AT true ---
+/**
+ * 传画接龙 — 后端服务器
+ * Express + Socket.IO 实现多人联机绘画猜词接力游戏
+ */
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const words = require('./words');
+const wordLibraries = words.libraries || [];
+let currentWordLib = '【简体中文】默认'; // 当前活动的词库名称
+
+// ============================================================
+// Express 配置
+// ============================================================
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  maxHttpBufferSize: 5 * 1024 * 1024 // 5MB 限制，用于画作 base64
+});
+---AT true ---
+/**
+ * 传画接龙 — 后端服务器
+ * Express + Socket.IO 实现多人联机绘画猜词接力游戏
+ */
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const words = require('./words');
+const wordLibraries = words.libraries || [];
+let currentWordLib = '【简体中文】默认'; // 当前活动的词库名称
+
+// ============================================================
+// Express 配置
+// ============================================================
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  maxHttpBufferSize: 5 * 1024 * 1024 // 5MB 限制，用于画作 base64
+});
+---AT true ---
+/**
+ * 传画接龙 — 后端服务器
+ * Express + Socket.IO 实现多人联机绘画猜词接力游戏
+ */
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const words = require('./words');
+const wordLibraries = words.libraries || [];
+let currentWordLib = '【简体中文】默认'; // 当前活动的词库名称
+
+// ============================================================
+// Express 配置
+// ============================================================
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  maxHttpBufferSize: 5 * 1024 * 1024 // 5MB 限制，用于画作 base64
+});
+---AT true ---
+/**
+ * 传画接龙 — 后端服务器
+ * Express + Socket.IO 实现多人联机绘画猜词接力游戏
+ */
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const words = require('./words');
+const wordLibraries = words.libraries || [];
+let currentWordLib = '【简体中文】默认'; // 当前活动的词库名称
+
+// ============================================================
+// Express 配置
+// ============================================================
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  maxHttpBufferSize: 5 * 1024 * 1024 // 5MB 限制，用于画作 base64
+});
+---AT true ---
+/**
+ * 传画接龙 — 后端服务器
+ * Express + Socket.IO 实现多人联机绘画猜词接力游戏
+ */
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const words = require('./words');
+const wordLibraries = words.libraries || [];
+let currentWordLib = '【简体中文】默认'; // 当前活动的词库名称
+
+// ============================================================
+// Express 配置
+// ============================================================
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  maxHttpBufferSize: 5 * 1024 * 1024 // 5MB 限制，用于画作 base64
+});
+---AT true ---
+/**
+ * 传画接龙 — 后端服务器
+ * Express + Socket.IO 实现多人联机绘画猜词接力游戏
+ */
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const words = require('./words');
+const wordLibraries = words.libraries || [];
+let currentWordLib = '【简体中文】默认'; // 当前活动的词库名称
+
+// ============================================================
+// Express 配置
+// ============================================================
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  maxHttpBufferSize: 5 * 1024 * 1024 // 5MB 限制，用于画作 base64
+});
+---AT true ---
+/**
+ * 传画接龙 — 后端服务器
+ * Express + Socket.IO 实现多人联机绘画猜词接力游戏
+ */
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const words = require('./words');
+const wordLibraries = words.libraries || [];
+let currentWordLib = '【简体中文】默认'; // 当前活动的词库名称
+
+// ============================================================
+// Express 配置
+// ============================================================
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  maxHttpBufferSize: 5 * 1024 * 1024 // 5MB 限制，用于画作 base64
+});
+---AT true ---
+/**
+ * 传画接龙 — 后端服务器
+ * Express + Socket.IO 实现多人联机绘画猜词接力游戏
+ */
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const words = require('./words');
+const wordLibraries = words.libraries || [];
+let currentWordLib = '【简体中文】默认'; // 当前活动的词库名称
+
+// ============================================================
+// Express 配置
+// ============================================================
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  maxHttpBufferSize: 5 * 1024 * 1024 // 5MB 限制，用于画作 base64
+});
+---AT true ---
+/**
+ * 传画接龙 — 后端服务器
+ * Express + Socket.IO 实现多人联机绘画猜词接力游戏
+ */
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const words = require('./words');
+const wordLibraries = words.libraries || [];
+let currentWordLib = '【简体中文】默认'; // 当前活动的词库名称
+
+// ============================================================
+// Express 配置
+// ============================================================
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  maxHttpBufferSize: 5 * 1024 * 1024 // 5MB 限制，用于画作 base64
+});
+---AT true ---
+/**
+ * 传画接龙 — 后端服务器
+ * Express + Socket.IO 实现多人联机绘画猜词接力游戏
+ */
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const words = require('./words');
+const wordLibraries = words.libraries || [];
+let currentWordLib = '【简体中文】默认'; // 当前活动的词库名称
+
+// ============================================================
+// Express 配置
+// ============================================================
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  maxHttpBufferSize: 5 * 1024 * 1024 // 5MB 限制，用于画作 base64
+});
+---AT true ---
+/**
+ * 传画接龙 — 后端服务器
+ * Express + Socket.IO 实现多人联机绘画猜词接力游戏
+ */
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const words = require('./words');
+const wordLibraries = words.libraries || [];
+let currentWordLib = '【简体中文】默认'; // 当前活动的词库名称
+
+// ============================================================
+// Express 配置
+// ============================================================
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  maxHttpBufferSize: 5 * 1024 * 1024 // 5MB 限制，用于画作 base64
+});
+---AT true ---
+/**
+ * 传画接龙 — 后端服务器
+ * Express + Socket.IO 实现多人联机绘画猜词接力游戏
+ */
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const words = require('./words');
+const wordLibraries = words.libraries || [];
+let currentWordLib = '【简体中文】默认'; // 当前活动的词库名称
+
+// ============================================================
+// Express 配置
+// ============================================================
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  maxHttpBufferSize: 5 * 1024 * 1024 // 5MB 限制，用于画作 base64
+});
+---AT true ---
+/**
+ * 传画接龙 — 后端服务器
+ * Express + Socket.IO 实现多人联机绘画猜词接力游戏
+ */
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const words = require('./words');
+const wordLibraries = words.libraries || [];
+let currentWordLib = '【简体中文】默认'; // 当前活动的词库名称
+
+// ============================================================
+// Express 配置
+// ============================================================
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  maxHttpBufferSize: 5 * 1024 * 1024 // 5MB 限制，用于画作 base64
+});
+---AT true ---
+/**
+ * 传画接龙 — 后端服务器
+ * Express + Socket.IO 实现多人联机绘画猜词接力游戏
+ */
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const words = require('./words');
+const wordLibraries = words.libraries || [];
+let currentWordLib = '【简体中文】默认'; // 当前活动的词库名称
+
+// ============================================================
+// Express 配置
+// ============================================================
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  maxHttpBufferSize: 5 * 1024 * 1024 // 5MB 限制，用于画作 base64
+});
+---AT true ---
+/**
+ * 传画接龙 — 后端服务器
+ * Express + Socket.IO 实现多人联机绘画猜词接力游戏
+ */
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const words = require('./words');
+const wordLibraries = words.libraries || [];
+let currentWordLib = '【简体中文】默认'; // 当前活动的词库名称
+
+// ============================================================
+// Express 配置
+// ============================================================
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  maxHttpBufferSize: 5 * 1024 * 1024 // 5MB 限制，用于画作 base64
+});
+---AT true ---
+/**
+ * 传画接龙 — 后端服务器
+ * Express + Socket.IO 实现多人联机绘画猜词接力游戏
+ */
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const words = require('./words');
+const wordLibraries = words.libraries || [];
+let currentWordLib = '【简体中文】默认'; // 当前活动的词库名称
+
+// ============================================================
+// Express 配置
+// ============================================================
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  maxHttpBufferSize: 5 * 1024 * 1024 // 5MB 限制，用于画作 base64
+});
+---AT true ---
+/**
+ * 传画接龙 — 后端服务器
+ * Express + Socket.IO 实现多人联机绘画猜词接力游戏
+ */
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const words = require('./words');
+const wordLibraries = words.libraries || [];
+let currentWordLib = '【简体中文】默认'; // 当前活动的词库名称
+
+// ============================================================
+// Express 配置
+// ============================================================
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  maxHttpBufferSize: 5 * 1024 * 1024 // 5MB 限制，用于画作 base64
+});
+---AT true ---
+/**
+ * 传画接龙 — 后端服务器
+ * Express + Socket.IO 实现多人联机绘画猜词接力游戏
+ */
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const words = require('./words');
+const wordLibraries = words.libraries || [];
+let currentWordLib = '【简体中文】默认'; // 当前活动的词库名称
+
+// ============================================================
+// Express 配置
+// ============================================================
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  maxHttpBufferSize: 5 * 1024 * 1024 // 5MB 限制，用于画作 base64
+});
+---AT true ---
+/**
+ * 传画接龙 — 后端服务器
+ * Express + Socket.IO 实现多人联机绘画猜词接力游戏
+ */
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const words = require('./words');
+const wordLibraries = words.libraries || [];
+let currentWordLib = '【简体中文】默认'; // 当前活动的词库名称
+
+// ============================================================
+// Express 配置
+// ============================================================
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  maxHttpBufferSize: 5 * 1024 * 1024 // 5MB 限制，用于画作 base64
+});
+---AT true ---
+/**
+ * 传画接龙 — 后端服务器
+ * Express + Socket.IO 实现多人联机绘画猜词接力游戏
+ */
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const words = require('./words');
+const wordLibraries = words.libraries || [];
+let currentWordLib = '【简体中文】默认'; // 当前活动的词库名称
+
+// ============================================================
+// Express 配置
+// ============================================================
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  maxHttpBufferSize: 5 * 1024 * 1024 // 5MB 限制，用于画作 base64
+});
+---AT true ---
+/**
+ * 传画接龙 — 后端服务器
+ * Express + Socket.IO 实现多人联机绘画猜词接力游戏
+ */
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const words = require('./words');
+const wordLibraries = words.libraries || [];
+let currentWordLib = '【简体中文】默认'; // 当前活动的词库名称
+
+// ============================================================
+// Express 配置
+// ============================================================
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  maxHttpBufferSize: 5 * 1024 * 1024 // 5MB 限制，用于画作 base64
+});
+---AT true ---
+/**
+ * 传画接龙 — 后端服务器
+ * Express + Socket.IO 实现多人联机绘画猜词接力游戏
+ */
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const words = require('./words');
+const wordLibraries = words.libraries || [];
+let currentWordLib = '【简体中文】默认'; // 当前活动的词库名称
+
+// ============================================================
+// Express 配置
+// ============================================================
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  maxHttpBufferSize: 5 * 1024 * 1024 // 5MB 限制，用于画作 base64
+});
+---AT true ---
+/**
+ * 传画接龙 — 后端服务器
+ * Express + Socket.IO 实现多人联机绘画猜词接力游戏
+ */
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const words = require('./words');
+const wordLibraries = words.libraries || [];
+let currentWordLib = '【简体中文】默认'; // 当前活动的词库名称
+
+// ============================================================
+// Express 配置
+// ============================================================
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  maxHttpBufferSize: 5 * 1024 * 1024 // 5MB 限制，用于画作 base64
+});
+---AT true ---
+/**
+ * 传画接龙 — 后端服务器
+ * Express + Socket.IO 实现多人联机绘画猜词接力游戏
+ */
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const words = require('./words');
+const wordLibraries = words.libraries || [];
+let currentWordLib = '【简体中文】默认'; // 当前活动的词库名称
+
+// ============================================================
+// Express 配置
+// ============================================================
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  maxHttpBufferSize: 5 * 1024 * 1024 // 5MB 限制，用于画作 base64
+});
+---AT true ---
+/**
+ * 传画接龙 — 后端服务器
+ * Express + Socket.IO 实现多人联机绘画猜词接力游戏
+ */
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const words = require('./words');
+const wordLibraries = words.libraries || [];
+let currentWordLib = '【简体中文】默认'; // 当前活动的词库名称
+
+// ============================================================
+// Express 配置
+// ============================================================
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  maxHttpBufferSize: 5 * 1024 * 1024 // 5MB 限制，用于画作 base64
+});
+---AT true ---
+/**
+ * 传画接龙 — 后端服务器
+ * Express + Socket.IO 实现多人联机绘画猜词接力游戏
+ */
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const words = require('./words');
+const wordLibraries = words.libraries || [];
+let currentWordLib = '【简体中文】默认'; // 当前活动的词库名称
+
+// ============================================================
+// Express 配置
+// ============================================================
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  maxHttpBufferSize: 5 * 1024 * 1024 // 5MB 限制，用于画作 base64
+});
+---AT true ---
+/**
+ * 传画接龙 — 后端服务器
+ * Express + Socket.IO 实现多人联机绘画猜词接力游戏
+ */
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const words = require('./words');
+const wordLibraries = words.libraries || [];
+let currentWordLib = '【简体中文】默认'; // 当前活动的词库名称
+
+// ============================================================
+// Express 配置
+// ============================================================
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  maxHttpBufferSize: 5 * 1024 * 1024 // 5MB 限制，用于画作 base64
+});
+---AT true ---
+/**
+ * 传画接龙 — 后端服务器
+ * Express + Socket.IO 实现多人联机绘画猜词接力游戏
+ */
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const words = require('./words');
+const wordLibraries = words.libraries || [];
+let currentWordLib = '【简体中文】默认'; // 当前活动的词库名称
+
+// ============================================================
+// Express 配置
+// ============================================================
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  maxHttpBufferSize: 5 * 1024 * 1024 // 5MB 限制，用于画作 base64
+});
+---AT true ---
+/**
+ * 传画接龙 — 后端服务器
+ * Express + Socket.IO 实现多人联机绘画猜词接力游戏
+ */
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const words = require('./words');
+const wordLibraries = words.libraries || [];
+let currentWordLib = '【简体中文】默认'; // 当前活动的词库名称
+
+// ============================================================
+// Express 配置
+// ============================================================
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  maxHttpBufferSize: 5 * 1024 * 1024 // 5MB 限制，用于画作 base64
+});
+---AT true ---
+/**
+ * 传画接龙 — 后端服务器
+ * Express + Socket.IO 实现多人联机绘画猜词接力游戏
+ */
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const words = require('./words');
+const wordLibraries = words.libraries || [];
+let currentWordLib = '【简体中文】默认'; // 当前活动的词库名称
+
+// ============================================================
+// Express 配置
+// ============================================================
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  maxHttpBufferSize: 5 * 1024 * 1024 // 5MB 限制，用于画作 base64
+});
+---AT true ---
+/**
+ * 传画接龙 — 后端服务器
+ * Express + Socket.IO 实现多人联机绘画猜词接力游戏
+ */
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const words = require('./words');
+const wordLibraries = words.libraries || [];
+let currentWordLib = '【简体中文】默认'; // 当前活动的词库名称
+
+// ============================================================
+// Express 配置
+// ============================================================
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  maxHttpBufferSize: 5 * 1024 * 1024 // 5MB 限制，用于画作 base64
+});
+---AT true ---
+/**
+ * 传画接龙 — 后端服务器
+ * Express + Socket.IO 实现多人联机绘画猜词接力游戏
+ */
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const words = require('./words');
+const wordLibraries = words.libraries || [];
+let currentWordLib = '【简体中文】默认'; // 当前活动的词库名称
+
+// ============================================================
+// Express 配置
+// ============================================================
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  maxHttpBufferSize: 5 * 1024 * 1024 // 5MB 限制，用于画作 base64
+});
+---AT true ---
+/**
+ * 传画接龙 — 后端服务器
+ * Express + Socket.IO 实现多人联机绘画猜词接力游戏
+ */
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const words = require('./words');
+const wordLibraries = words.libraries || [];
+let currentWordLib = '【简体中文】默认'; // 当前活动的词库名称
+
+// ============================================================
+// Express 配置
+// ============================================================
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  maxHttpBufferSize: 5 * 1024 * 1024 // 5MB 限制，用于画作 base64
+});
+---AT true ---
+/**
+ * 传画接龙 — 后端服务器
+ * Express + Socket.IO 实现多人联机绘画猜词接力游戏
+ */
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const words = require('./words');
+const wordLibraries = words.libraries || [];
+let currentWordLib = '【简体中文】默认'; // 当前活动的词库名称
+
+// ============================================================
+// Express 配置
+// ============================================================
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  maxHttpBufferSize: 5 * 1024 * 1024 // 5MB 限制，用于画作 base64
+});
+---AT true ---
+/**
+ * 传画接龙 — 后端服务器
+ * Express + Socket.IO 实现多人联机绘画猜词接力游戏
+ */
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const words = require('./words');
+const wordLibraries = words.libraries || [];
+let currentWordLib = '【简体中文】默认'; // 当前活动的词库名称
+
+// ============================================================
+// Express 配置
+// ============================================================
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  maxHttpBufferSize: 5 * 1024 * 1024 // 5MB 限制，用于画作 base64
+});
+---AT true ---
+/**
+ * 传画接龙 — 后端服务器
+ * Express + Socket.IO 实现多人联机绘画猜词接力游戏
+ */
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const words = require('./words');
+const wordLibraries = words.libraries || [];
+let currentWordLib = '【简体中文】默认'; // 当前活动的词库名称
+
+// ============================================================
+// Express 配置
+// ============================================================
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  maxHttpBufferSize: 5 * 1024 * 1024 // 5MB 限制，用于画作 base64
+});
+---AT true ---
+/**
+ * 传画接龙 — 后端服务器
+ * Express + Socket.IO 实现多人联机绘画猜词接力游戏
+ */
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const words = require('./words');
+const wordLibraries = words.libraries || [];
+let currentWordLib = '【简体中文】默认'; // 当前活动的词库名称
+
+// ============================================================
+// Express 配置
+// ============================================================
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  maxHttpBufferSize: 5 * 1024 * 1024 // 5MB 限制，用于画作 base64
+});
+---AT true ---
+/**
+ * 传画接龙 — 后端服务器
+ * Express + Socket.IO 实现多人联机绘画猜词接力游戏
+ */
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const words = require('./words');
+const wordLibraries = words.libraries || [];
+let currentWordLib = '【简体中文】默认'; // 当前活动的词库名称
+
+// ============================================================
+// Express 配置
+// ============================================================
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  maxHttpBufferSize: 5 * 1024 * 1024 // 5MB 限制，用于画作 base64
+});
+---AT true ---
+/**
+ * 传画接龙 — 后端服务器
+ * Express + Socket.IO 实现多人联机绘画猜词接力游戏
+ */
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const words = require('./words');
+const wordLibraries = words.libraries || [];
+let currentWordLib = '【简体中文】默认'; // 当前活动的词库名称
+
+// ============================================================
+// Express 配置
+// ============================================================
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  maxHttpBufferSize: 5 * 1024 * 1024 // 5MB 限制，用于画作 base64
+});
+---AT true ---
+/**
+ * 传画接龙 — 后端服务器
+ * Express + Socket.IO 实现多人联机绘画猜词接力游戏
+ */
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const words = require('./words');
+const wordLibraries = words.libraries || [];
+let currentWordLib = '【简体中文】默认'; // 当前活动的词库名称
+
+// ============================================================
+// Express 配置
+// ============================================================
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  maxHttpBufferSize: 5 * 1024 * 1024 // 5MB 限制，用于画作 base64
+});
+---AT true ---
+/**
+ * 传画接龙 — 后端服务器
+ * Express + Socket.IO 实现多人联机绘画猜词接力游戏
+ */
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const words = require('./words');
+const wordLibraries = words.libraries || [];
+let currentWordLib = '【简体中文】默认'; // 当前活动的词库名称
+
+// ============================================================
+// Express 配置
+// ============================================================
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  maxHttpBufferSize: 5 * 1024 * 1024 // 5MB 限制，用于画作 base64
+});
+---AT true ---
+/**
+ * 传画接龙 — 后端服务器
+ * Express + Socket.IO 实现多人联机绘画猜词接力游戏
+ */
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const words = require('./words');
+const wordLibraries = words.libraries || [];
+let currentWordLib = '【简体中文】默认'; // 当前活动的词库名称
+
+// ============================================================
+// Express 配置
+// ============================================================
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  maxHttpBufferSize: 5 * 1024 * 1024 // 5MB 限制，用于画作 base64
+});
+---AT true ---
+/**
+ * 传画接龙 — 后端服务器
+ * Express + Socket.IO 实现多人联机绘画猜词接力游戏
+ */
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const words = require('./words');
+const wordLibraries = words.libraries || [];
+let currentWordLib = '【简体中文】默认'; // 当前活动的词库名称
+
+// ============================================================
+// Express 配置
+// ============================================================
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  maxHttpBufferSize: 5 * 1024 * 1024 // 5MB 限制，用于画作 base64
+});
+---AT true ---
+/**
+ * 传画接龙 — 后端服务器
+ * Express + Socket.IO 实现多人联机绘画猜词接力游戏
+ */
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const words = require('./words');
+const wordLibraries = words.libraries || [];
+let currentWordLib = '【简体中文】默认'; // 当前活动的词库名称
+
+// ============================================================
+// Express 配置
+// ============================================================
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  maxHttpBufferSize: 5 * 1024 * 1024 // 5MB 限制，用于画作 base64
+});
+---AT true ---
+/**
+ * 传画接龙 — 后端服务器
+ * Express + Socket.IO 实现多人联机绘画猜词接力游戏
+ */
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const words = require('./words');
+const wordLibraries = words.libraries || [];
+let currentWordLib = '【简体中文】默认'; // 当前活动的词库名称
+
+// ============================================================
+// Express 配置
+// ============================================================
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  maxHttpBufferSize: 5 * 1024 * 1024 // 5MB 限制，用于画作 base64
+});
+---AT true ---
+/**
+ * 传画接龙 — 后端服务器
+ * Express + Socket.IO 实现多人联机绘画猜词接力游戏
+ */
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const words = require('./words');
+const wordLibraries = words.libraries || [];
+let currentWordLib = '【简体中文】默认'; // 当前活动的词库名称
+
+// ============================================================
+// Express 配置
+// ============================================================
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  maxHttpBufferSize: 5 * 1024 * 1024 // 5MB 限制，用于画作 base64
+});
+---AT true ---
+/**
+ * 传画接龙 — 后端服务器
+ * Express + Socket.IO 实现多人联机绘画猜词接力游戏
+ */
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const words = require('./words');
+const wordLibraries = words.libraries || [];
+let currentWordLib = '【简体中文】默认'; // 当前活动的词库名称
+
+// ===================
+
+[… truncated 187882 chars …]
