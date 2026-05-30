@@ -13,6 +13,7 @@
   <div class="entry-container">
     <h1 class="game-title">🎨 传画接龙</h1>
     <p class="subtitle">绘画猜词接力派对游戏</p>
+    <p id="global-latency" style="position:fixed;top:10px;left:10px;font-size:14px;z-index:3000;margin:0;display:none"></p>
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;position:relative">
       <div style="position:relative;display:inline-block">
         <span id="avatar-hint" style="position:absolute;left:50%;transform:translateX(-50%);bottom:100%;margin-bottom:2px;font-size:11px;color:#888;white-space:nowrap">点击切换头像</span>
@@ -55,17 +56,22 @@
     <div class="lobby-center">
       <h3>⚙️ 房间设置</h3>
       <div id="settings-panel">
-        <div class="setting-row">
+        <div class="setting-row owner-only-control">
           <label>🎨 作画时间：<span id="draw-time-display">60</span>秒</label>
           <input type="range" id="draw-time-slider" min="10" max="120" value="60" step="5">
         </div>
-        <div class="setting-row">
+        <div class="setting-row owner-only-control">
           <label>💬 猜词时间：<span id="guess-time-display">20</span>秒</label>
           <input type="range" id="guess-time-slider" min="10" max="60" value="20" step="5">
         </div>
-        <div class="setting-row">
+        <div class="setting-row owner-only-control">
           <label>📖 词库：<span id="wordlib-display">默认</span></label>
           <select id="wordlib-selector" style="width:100%;padding:10px;border:2px solid #444;border-radius:8px;background:#2a2a3e;color:#eee;font-size:18px;margin-top:4px"></select>
+        </div>
+        <div class="setting-row nonowner-text" style="display:none">
+          <div>🎨 作画时间：<strong><span id="ndraw-time">60</span>秒</strong></div>
+          <div style="margin-top:8px">💬 猜词时间：<strong><span id="nguess-time">20</span>秒</strong></div>
+          <div style="margin-top:8px">📖 词库：<strong><span id="nwordlib">默认</span></strong></div>
         </div>
       </div>
       <button id="btn-start-game" class="btn-primary btn-large hidden">🚀 开始游戏</button>
@@ -98,7 +104,9 @@
 
 <!-- ==================== 游戏界面 ==================== -->
 <div id="page-game" class="hidden">
-  <div id="game-header">
+  <div id="player-list-btn" style="position:fixed;background:rgba(0,0,0,0.4);color:#eee;padding:6px 14px;border-radius:8px;font-size:15px;cursor:grab;z-index:2000;display:none;backdrop-filter:blur(4px);border:1px solid rgba(255,255,255,0.1);user-select:none">📋 玩家列表</div>
+<div id="player-list-panel" class="hidden" style="position:fixed;background:rgba(0,0,0,0.7);border-radius:10px;padding:12px;z-index:2001;min-width:200px;backdrop-filter:blur(4px);border:1px solid rgba(255,255,255,0.1)"></div>
+<div id="game-header">
     <span id="round-info"></span>
     <span id="timer-display"></span>
     <span id="task-info"></span>
@@ -141,7 +149,10 @@
       <h2>🎯 选择初始词</h2>
       <p>为你的链条选择一个词开始！</p>
       <div id="word-candidates"></div>
-      <div id="word-select-timer"></div>
+      <div id="word-select-timer" style="font-size:22px;color:#e94560;margin-top:8px"></div>
+      <div style="width:100%;height:8px;background:#333;border-radius:4px;margin-top:8px;overflow:hidden">
+        <div id="word-select-progress" style="width:100%;height:100%;background:#e94560;border-radius:4px;transition:transform .3s linear;transform-origin:center"></div>
+      </div>
     </div>
   </div>
 
@@ -185,7 +196,7 @@
       <div id="vote-timer" class="vote-timer"></div>
       <div id="vote-progress"></div>
       <div style="width:100%;height:8px;background:#333;border-radius:4px;margin-top:12px;overflow:hidden">
-        <div id="vote-progress-bar" style="width:0%;height:100%;background:#e94560;border-radius:4px;transition:width .3s"></div>
+        <div id="vote-progress-bar" style="width:100%;height:100%;background:#e94560;border-radius:4px;transition:transform .3s linear;transform-origin:center;transform:scaleX(1)"></div>
       </div>
     </div>
   </div>
@@ -216,6 +227,15 @@
 <div id="loading-overlay" class="hidden overlay">
   <div class="loading-spinner"></div>
   <p id="loading-text">连接中...</p>
+</div>
+
+<!-- ==================== 初始词提示弹窗 ==================== -->
+<div id="initword-overlay" class="hidden overlay" style="z-index:9999">
+  <div class="modal" style="max-width:500px;padding:40px">
+    <div style="font-size:28px;margin-bottom:10px">🎯 你的初始词</div>
+    <div id="initword-display" style="font-size:72px;font-weight:bold;color:#e94560;margin:20px 0"></div>
+    <div id="initword-note" style="font-size:16px;color:#888"></div>
+  </div>
 </div>
 
 <!-- ==================== 断开提示 ==================== -->

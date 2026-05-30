@@ -4,6 +4,15 @@
 
 // ---- 全局状态 ----
 const state = {
+  replayInterval: null,
+  _currentChainIndex: -1,
+  _currentStepIndex: -1,
+  _reviewStepTime: 0,
+  _reviewQueue: [],
+  _reviewTimer: null,
+  _reviewUpdated: false,
+  _pendingDrawUpdate: null,
+
   roomId: null,
   myNickname: '',
   myId: null,
@@ -120,6 +129,24 @@ function showPage(name) {
     const el = $(id);
     if (el) el.classList.toggle('hidden', id !== 'page-'+name);
   });
+  // 玩家列表按钮的显示控制
+  const btn = document.getElementById('player-list-btn');
+  if (btn) {
+    btn.style.display = (name === 'game' || name === 'review') ? '' : 'none';
+    // 恢复位置
+    const savedPos = localStorage.getItem('playerListBtnPos');
+    if (savedPos) {
+      try {
+        const pos = JSON.parse(savedPos);
+        btn.style.left = pos.left + 'px';
+        btn.style.top = pos.top + 'px';
+        btn.style.right = '';
+      } catch(e) {}
+    }
+    btn.style.right = btn.style.left ? '' : '10px';
+  }
+  const panel = document.getElementById('player-list-panel');
+  if (panel) panel.classList.add('hidden');
   // 入口页隐藏聊天框，其他页面显示
   const showChat = name !== 'entry';
   ['lobby-chat','game-chat'].forEach(id => {
@@ -159,7 +186,93 @@ let lastX = 0, lastY = 0;
 let selectedColor = '#000000';
 let brushWidth = 2.5; // 细笔默认
 let isEraser = false; // 是否橡皮擦模式
+let recordedStrokes = []; // 记录画笔轨迹用于回顾回放
+let currentStroke = null; // 当前笔画
 
+
+function setupSettings() {
+  dom.drawTimeSlider.addEventListener('input', () => {
+    dom.drawTimeDisplay.textContent = dom.drawTimeSlider.value;
+    if (state.isOwner && state.roomId) {
+      socket.emit('update_config', { drawTime: parseInt(dom.drawTimeSlider.value), guessTime: parseInt(dom.guessTimeSlider.value) });
+    }
+  });
+  dom.guessTimeSlider.addEventListener('input', () => {
+    dom.guessTimeDisplay.textContent = dom.guessTimeSlider.value;
+    if (state.isOwner && state.roomId) {
+      socket.emit('update_config', { drawTime: parseInt(dom.drawTimeSlider.value), guessTime: parseInt(dom.guessTimeSlider.value) });
+    }
+  });
+  dom.wordlibSelector.addEventListener('change', () => {
+    const lib = dom.wordlibSelector.value;
+    dom.wordlibDisplay.textContent = lib;
+    if (state.isOwner && state.roomId) {
+      socket.emit('select_wordlib', { wordLib: lib });
+    }
+  });
+  dom.btnStartGame.addEventListener('click', () => {
+    socket.emit('start_game');
+  });
+}
+
+function submitGuess() {
+  if (state.submitted) return;
+  const word = dom.guessInput.value.trim();
+  if (!word) {
+    showToast('请输入一个词语');
+    return;
+  }
+  socket.emit('submit_guess', word);
+  state.submitted = true;
+  dom.guessInput.disabled = true;
+  dom.btnSubmitGuess.disabled = true;
+  dom.btnSubmitGuess.textContent = '✅ 已提交';
+}
+
+function setupSubmit() {
+  dom.btnSubmitDrawing.addEventListener('click', () => {
+    if (state.submitted) return;
+    socket.emit('submit_drawing', { image: getCanvasDataURL(), strokes: recordedStrokes });
+    state.submitted = true;
+    recordedStrokes = [];
+    dom.btnSubmitDrawing.disabled = true;
+    dom.btnSubmitDrawing.textContent = '✅ 已提交';
+  });
+  dom.btnSubmitGuess.addEventListener('click', () => {
+    submitGuess();
+  });
+  dom.guessInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') submitGuess();
+  });
+}
+
+function setupBackToLobby() {
+  dom.btnBackToRoom.addEventListener('click', () => {
+    socket.emit('back_to_room');
+    showToast('正在返回房间...');
+  });
+  dom.btnCopyRoomId.addEventListener('click', () => {
+    const roomId = state.roomId;
+    if (!roomId) return;
+    navigator.clipboard.writeText(roomId).then(() => {
+      showToast('✅ 已复制房间号：' + roomId);
+    }).catch(() => {
+      const ta = document.createElement('textarea');
+      ta.value = roomId;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      showToast('✅ 已复制房间号：' + roomId);
+    });
+  });
+  dom.btnLeaveRoom.addEventListener('click', () => {
+    socket.emit('leave_room');
+  });
+  dom.btnBackToLobby.addEventListener('click', () => {
+    socket.emit('back_to_lobby');
+  });
+}
 function initCanvas() {
   if (!canvas) return;
   ctx = canvas.getContext('2d');
@@ -245,6 +358,8 @@ function startDrawing(e) {
   const pos = getCanvasPos(e);
   lastX = pos.x;
   lastY = pos.y;
+  // 开始记录新笔画
+  currentStroke = { points: [{ x: lastX, y: lastY }], color: selectedColor, width: brushWidth, eraser: isEraser };
 }
 
 function draw(e) {
@@ -259,6 +374,8 @@ function draw(e) {
   ctx.lineWidth = brushWidth;
   ctx.stroke();
   ctx.globalCompositeOperation = 'source-over';
+  // 记录轨迹点
+  if (currentStroke) currentStroke.points.push({ x: lastX, y: lastY });
   lastX = pos.x;
   lastY = pos.y;
 }
@@ -266,6 +383,10 @@ function draw(e) {
 function stopDrawing(e) {
   if (e) e.preventDefault();
   isDrawing = false;
+  if (currentStroke && currentStroke.points.length > 1) {
+    recordedStrokes.push(currentStroke);
+  }
+  currentStroke = null;
 }
 
 function setupCanvasEvents() {
@@ -309,6 +430,8 @@ function clearCanvas() {
   if (!ctx) return;
   ctx.fillStyle = 'white';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
+  recordedStrokes = [];
+  currentStroke = null;
 }
 
 function getCanvasDataURL() {
@@ -348,8 +471,8 @@ function startTimer(duration, onEnd) {
         dom.voteTimer.textContent = remaining + 's';
         const bar = document.getElementById('vote-progress-bar');
         if (bar) {
-          const pct = ((state.timerDuration - remaining) / state.timerDuration) * 100;
-          bar.style.width = Math.min(100, pct) + '%';
+          const pct = Math.max(0, Math.min(100, ((state.timerDuration - remaining) / state.timerDuration) * 100));
+          bar.style.transform = 'scaleX(' + (1 - pct / 100) + ')';
         }
       }
     }
@@ -379,6 +502,51 @@ function connectSocket() {
   // 响应服务端 ping 测量
   socket.on('ping_measure', (data) => {
     socket.emit('pong_measure', { t: data.t });
+  });
+
+  // 首页延迟显示 & 玩家列表延迟更新
+  // 回顾步骤—加入队列，等回放结束或至少 3 秒后进入下一步
+  socket.on('review_step', (data) => {
+    state._reviewQueue.push(data);
+    if (!state._reviewTimer) processReviewQueue();
+  });
+  function processReviewQueue() {
+    if (state._reviewQueue.length === 0) { state._reviewTimer = null; return; }
+    const data = state._reviewQueue.shift();
+    showReviewStep(data);
+    state._reviewTimer = setTimeout(processReviewQueue, 4000);
+  }
+
+  // 回顾阶段画作补交更新
+  socket.on('review_drawing_update', (data) => {
+    if (!dom.reviewImage) return;
+    if (state._currentChainIndex === data.chainIndex && state._currentStepIndex >= data.stepIndex) {
+      dom.reviewImage.src = data.drawing;
+      state._reviewUpdated = true;
+    } else if (state._currentChainIndex < data.chainIndex) {
+      // 还未展示到该链条，缓存起来
+      state._pendingDrawUpdate = data;
+    }
+  });
+
+  socket.on('your_latency', (data) => {
+    const el = document.getElementById('global-latency');
+    if (el) {
+      const ms = data.latency;
+      const color = ms <= 500 ? '#2ecc71' : (ms <= 1000 ? '#f39c12' : '#ff4444');
+      el.textContent = '延迟 ' + ms + 'ms';
+      el.style.color = color;
+      el.style.display = '';
+    }
+    // 更新玩家列表中自己的延迟
+    const panel = document.getElementById('player-list-panel');
+    if (panel && !panel.classList.contains('hidden')) {
+      const myPlayer = state.players?.find(p => p.id === state.myId);
+      if (myPlayer) {
+        myPlayer.latency = data.latency;
+        renderPlayerListPanel();
+      }
+    }
   });
 
   socket.on('connect', () => {
@@ -425,8 +593,10 @@ function connectSocket() {
     state.players = data.players;
     state.isOwner = data.players.some(p => p.id === state.myId && p.isOwner);
     state.config = data.config;
-    // 如果还在入口页或加载中，切到大厅
-    if (state.phase === 'entry') {
+    // 更新玩家列表按钮和面板
+    updatePlayerListUI();
+    // 如果还在入口页或加载中，切到大厅；或者房间状态已重置为大厅
+    if (state.phase === 'entry' || (data.state === 'lobby' && state.phase !== 'lobby')) {
       dom.loadingOverlay.classList.add('hidden');
       showPage('lobby');
     }
@@ -459,6 +629,12 @@ function connectSocket() {
     state.submitted = false;
     state.reviewChains = [];
     dom.wordSelectOverlay.classList.add('hidden');
+    // 游戏开始时玩家列表按钮移到右上角
+    const pbtn = document.getElementById('player-list-btn');
+    if (pbtn) {
+      pbtn.style.left = ''; pbtn.style.right = '10px'; pbtn.style.top = '60px';
+      localStorage.setItem('playerListBtnPos', JSON.stringify({ left: window.innerWidth - 135, top: 60 }));
+    }
     showPage('game');
     showToast(`🎮 游戏开始！共 ${state.totalRounds} 轮`);
   });
@@ -482,6 +658,21 @@ function connectSocket() {
     state.myTask = data.yourTask;
     state.submitted = false;
     state.totalRounds = data.totalRounds;
+    dom.wordSelectOverlay.classList.add('hidden');
+    // 使用 deadline + 本地延迟补偿，精确对齐服务端超时
+    if (data.deadline) {
+      // 查找自己的延迟
+      const myPlayer = state.players.find(p => p.id === state.myId);
+      const myLatency = (myPlayer && myPlayer.latency > 0) ? myPlayer.latency : 0;
+      // 只用一半 RTT 补偿（单向延迟），避免过补偿
+      const raw = (data.deadline - Date.now()) / 1000 - myLatency / 2000;
+      const localRemaining = Math.max(1, Math.ceil(raw));
+      data.timeout = Math.min(data.timeout, localRemaining);
+    }
+    // 扣除 1 秒确保客户端先于服务端超时触发
+    if (data.type === 'draw' || data.type === 'guess') {
+      data.timeout = Math.max(1, data.timeout - 1);
+    } // 选词阶段已结束，隐藏弹窗
     // 步骤指示器（不含自己名称）
     const total = data.totalRounds;
     const stepIdx = data.round - 1;
@@ -509,6 +700,32 @@ function connectSocket() {
     if (data.type === 'draw') {
       dom.drawWordDisplay.textContent = '🎯 ' + data.yourTask.word;
       dom.drawWordDisplay.classList.remove('hidden');
+      // 第1轮作画先显示 3 秒初始词提示
+      if (data.round === 1 && !data.yourTask.existingDrawing) {
+        const initOverlay = document.getElementById('initword-overlay');
+        const initDisplay = document.getElementById('initword-display');
+        const initNote = document.getElementById('initword-note');
+        if (initOverlay && initDisplay) {
+          initDisplay.textContent = data.yourTask.word;
+          initNote.textContent = data.yourTask.isSystemGenerated ? '（系统代选·超时）' : '你选择的初始词';
+          initOverlay.classList.remove('hidden');
+          dom.drawArea.classList.remove('hidden');
+          clearCanvas();
+          resizeCanvas();
+          dom.btnSubmitDrawing.disabled = false;
+          dom.btnSubmitDrawing.textContent = '✅ 提交画作';
+          startTimer(data.timeout, () => {
+            if (!state.submitted) {
+              socket.emit('submit_drawing', { image: getCanvasDataURL(), strokes: recordedStrokes });
+              state.submitted = true;
+              dom.btnSubmitDrawing.disabled = true;
+              dom.drawWaiting.classList.remove('hidden');
+            }
+          });
+          setTimeout(() => initOverlay.classList.add('hidden'), 3000);
+          return;
+        }
+      }
       dom.drawArea.classList.remove('hidden');
       if (data.yourTask.existingDrawing) {
         // 重连时保留已有画作
@@ -529,7 +746,7 @@ function connectSocket() {
       }
       startTimer(data.timeout, () => {
         if (!state.submitted) {
-          socket.emit('submit_drawing', getCanvasDataURL());
+          socket.emit('submit_drawing', { image: getCanvasDataURL(), strokes: recordedStrokes });
           state.submitted = true;
           dom.btnSubmitDrawing.disabled = true;
           dom.drawWaiting.classList.remove('hidden');
@@ -555,7 +772,7 @@ function connectSocket() {
       startTimer(data.timeout, () => {
         if (!state.submitted) {
           const text = dom.guessInput.value.trim();
-          const word = text || guessFallback();
+          const word = text || '';
           socket.emit('submit_guess', word);
           state.submitted = true;
           dom.guessInput.disabled = true;
@@ -605,6 +822,20 @@ function connectSocket() {
   // ---- 轮次结束 ----
   socket.on('round_end', () => {
     stopTimer();
+    // 作画阶段未提交则立即提交画布内容
+    if (state.roundType === 'draw' && !state.submitted) {
+      socket.emit('submit_drawing', { image: getCanvasDataURL(), strokes: recordedStrokes });
+      state.submitted = true;
+      dom.btnSubmitDrawing.disabled = true;
+    }
+    // 猜词阶段未提交则立即提交输入栏内容
+    if (state.roundType === 'guess' && !state.submitted) {
+      const text = dom.guessInput.value.trim();
+      socket.emit('submit_guess', text || '');
+      state.submitted = true;
+      dom.guessInput.disabled = true;
+      dom.btnSubmitGuess.disabled = true;
+    }
     dom.drawArea.classList.add('hidden');
     dom.guessArea.classList.add('hidden');
     dom.drawWaiting.classList.add('hidden');
@@ -625,11 +856,11 @@ function connectSocket() {
     dom.reviewTextArea.innerHTML = '';
     const label = document.getElementById('review-artist-label');
     if (label) label.textContent = '';
+    state._reviewQueue = [];
+    if (state._reviewTimer) { clearTimeout(state._reviewTimer); state._reviewTimer = null; }
   });
 
-  socket.on('review_step', (data) => {
-    showReviewStep(data);
-  });
+
 
   // ---- 投票 ----
   socket.on('vote_request', (data) => {
@@ -657,7 +888,7 @@ function connectSocket() {
         else if (vs.vote === 'incorrect') { statusText = '❌ 差点没缓过来'; statusColor = '#ff4444'; }
         else { statusText = '🤔 思考中'; statusColor = '#f39c12'; }
         const lat4 = latencyHtml(vs.latency);
-        row.innerHTML = `<span style="font-size:20px;margin-right:4px">${vs.avatar || '😀'}</span><span style="color:${isMe?'#e94560':'#ccc'}">${isMe?' (你)':''} ${vs.nickname}</span>${lat4} <span style="float:right;color:${statusColor}">${statusText}</span>`;
+        row.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><span><span style="font-size:20px;margin-right:4px">${vs.avatar || '😀'}</span><span style="color:${isMe?'#e94560':'#ccc'}">${isMe?' (你)':''} ${vs.nickname}</span>${lat4}</span><span style="color:${statusColor};white-space:nowrap">${statusText}</span></div>`;
       });
     }
     // 画作投票：所有人同步显示爱心标记 + 投票者名字
@@ -818,16 +1049,15 @@ function connectSocket() {
 }
 
 // 超时随机词
-function guessFallback() {
-  const fallbacks = ['猫','狗','苹果','花','太阳','房子','鱼','鸟','树','月亮'];
-  return fallbacks[Math.floor(Math.random() * fallbacks.length)];
-}
-
 // ================================================================
 //   选词界面
 // ================================================================
 function showWordSelect(candidates, timeout) {
   dom.wordCandidates.innerHTML = '';
+  const totalTime = timeout || 20;
+  dom.wordSelectTimer.textContent = '⏱ ' + totalTime + 's';
+  const bar = document.getElementById('word-select-progress');
+  if (bar) bar.style.transform = 'scaleX(1)';
   candidates.forEach(word => {
     const btn = document.createElement('button');
     btn.className = 'word-candidate-btn';
@@ -839,12 +1069,49 @@ function showWordSelect(candidates, timeout) {
     dom.wordCandidates.appendChild(btn);
   });
   dom.wordSelectOverlay.classList.remove('hidden');
+  // 实时更新倒计时和进度条
+  const timerInterval = setInterval(() => {
+    const remaining = Math.max(0, Math.ceil((state.timerEnd - Date.now()) / 1000));
+    dom.wordSelectTimer.textContent = '⏱ ' + remaining + 's';
+    if (bar && state.timerDuration > 0) {
+      const pct = Math.max(0, (remaining / state.timerDuration) * 100);
+      bar.style.transform = 'scaleX(' + (pct / 100) + ')';
+    }
+  }, 200);
+  // 隐藏时清除定时器
+  const origClose = dom.wordSelectOverlay.classList.add.bind(dom.wordSelectOverlay.classList);
+  dom.wordSelectOverlay.__closeTimer = timerInterval;
+  const observer = new MutationObserver(() => {
+    if (dom.wordSelectOverlay.classList.contains('hidden')) {
+      clearInterval(timerInterval);
+      observer.disconnect();
+    }
+  });
+  observer.observe(dom.wordSelectOverlay, { attributes: true, attributeFilter: ['class'] });
 }
 
 // ================================================================
 //   回顾界面
 // ================================================================
 function showReviewStep(data) {
+  // 清除之前的回放定时器
+  if (state.replayInterval) {
+    clearInterval(state.replayInterval);
+    state.replayInterval = null;
+  }
+  // 记录当前回顾位置
+  state._currentChainIndex = data.chainIndex;
+  state._currentStepIndex = data.stepIndex;
+  state._reviewUpdated = false;
+  // 检查是否有缓存的画作补交更新
+  if (state._pendingDrawUpdate && state._pendingDrawUpdate.chainIndex === data.chainIndex) {
+    const upd = state._pendingDrawUpdate;
+    if (upd.stepIndex <= data.stepIndex && dom.reviewImage) {
+      dom.reviewImage.src = upd.drawing;
+      state._reviewUpdated = true;
+    }
+    state._pendingDrawUpdate = null;
+  }
   const info = data.data || {};
   dom.reviewChainTitle.textContent = `第 ${data.chainIndex+1} 条链条`;
   dom.reviewTextArea.innerHTML = '';
@@ -893,10 +1160,19 @@ function showReviewStep(data) {
   dom.reviewImage.classList.remove('hidden');
 
   if (info.drawing) {
-    // 画作步骤：更新图片 + 作者标签（持续到下一张画出现）
-    dom.reviewImage.src = info.drawing;
+    // 检测是否为空白画布（超时自动提交的 1x1 像素白图）
+    const isBlank = info.drawing.length < 200;
+    // 画作步骤：先回放绘画过程（5倍速），再展示完成图
     const label = document.getElementById('review-artist-label');
     if (label) label.textContent = `✏️ ${info.player}`;
+    if (isBlank) {
+      // 如果已经收到补交画作，跳过白背景
+      if (state._reviewUpdated) return;
+      dom.reviewImage.style.background = '#fff';
+      return;
+    }
+    // 直接显示最终画作（跳过回放，确保高延迟客户端也能稳定看到）
+    dom.reviewImage.src = info.drawing;
   }
   // else: 猜词步骤—保留上一张画和作者标签，不碰
 
@@ -937,7 +1213,7 @@ function showVoteUI(data) {
     // 玩家列表
     const listDiv = document.createElement('div');
     listDiv.id = 'accuracy-voter-list';
-    listDiv.style.cssText = 'text-align:left;font-size:22px;line-height:2.2;margin:8px 0 16px;padding:10px;background:#1a1a3e;border-radius:10px';
+    listDiv.style.cssText = 'text-align:left;font-size:22px;line-height:2.2;margin:8px 0 16px;padding:10px;background:#1a1a3e;border-radius:10px;box-sizing:border-box';
     // 初始渲染：全部显示思考中（优先使用服务端下发的玩家列表，避免重连时 state.players 为空）
     const playerList = info.players && info.players.length > 0 ? info.players : state.players;
     playerList.forEach(pl => {
@@ -946,7 +1222,7 @@ function showVoteUI(data) {
       const isMe = pl.id === state.myId;
       const av = pl.avatar || '😀';
       const lat3 = pl.connected === false ? '' : latencyHtml(pl.latency);
-      row.innerHTML = `<span style="font-size:20px;margin-right:4px">${av}</span><span style="color:${isMe?'#e94560':'#ccc'}">${isMe?' (你)':''} ${pl.nickname}</span>${lat3} <span style="float:right;color:#f39c12">🤔 思考中</span>`;
+      row.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><span><span style="font-size:20px;margin-right:4px">${av}</span><span style="color:${isMe?'#e94560':'#ccc'}">${isMe?' (你)':''} ${pl.nickname}</span>${lat3}</span><span style="color:#f39c12;white-space:nowrap">🤔 思考中</span></div>`;
       listDiv.appendChild(row);
     });
     dom.voteBody.appendChild(listDiv);
@@ -1245,7 +1521,17 @@ function doJoinRoom() {
   if (!nickname) { dom.entryError.textContent = '请输入昵称'; dom.entryError.classList.remove('hidden'); return; }
   if (roomId.length !== 6) { dom.entryError.textContent = '房间号为6位'; dom.entryError.classList.remove('hidden'); return; }
   dom.entryError.classList.add('hidden');
+  // 加入超时处理：8 秒无响应则提示
+  let joinTimedOut = false;
+  const joinTimer = setTimeout(() => {
+    joinTimedOut = true;
+    dom.loadingOverlay.classList.add('hidden');
+    dom.entryError.textContent = '连接服务器超时，请检查网络或刷新重试';
+    dom.entryError.classList.remove('hidden');
+  }, 8000);
   socket.emit('join_room', { roomId, nickname, avatar: selectedAvatar }, (res) => {
+    clearTimeout(joinTimer);
+    if (joinTimedOut) return;
     if (res && res.error) {
       dom.loadingOverlay.classList.add('hidden');
       dom.entryError.textContent = res.error;
@@ -1283,11 +1569,23 @@ function updateLobbyUI(data) {
     dom.playerList.appendChild(li);
   });
 
-  // 词库选择器
+  // 同步当前设置值并初始化词库选择器
+  if (data.config) {
+    dom.drawTimeSlider.value = data.config.drawTime || 60;
+    dom.drawTimeDisplay.textContent = data.config.drawTime || 60;
+    dom.guessTimeSlider.value = data.config.guessTime || 20;
+    dom.guessTimeDisplay.textContent = data.config.guessTime || 20;
+    const current = data.config.wordLib || '默认';
+    dom.wordlibDisplay.textContent = current;
+    const ndt = document.getElementById('ndraw-time');
+    const ngt = document.getElementById('nguess-time');
+    const nwl = document.getElementById('nwordlib');
+    if (ndt) ndt.textContent = data.config.drawTime || 60;
+    if (ngt) ngt.textContent = data.config.guessTime || 20;
+    if (nwl) nwl.textContent = current;
+  }
   if (data.wordLibs && data.wordLibs.length > 0) {
     const current = data.config?.wordLib || '默认';
-    dom.wordlibDisplay.textContent = current;
-    // 只在首次或词库列表变化时刷新下拉框
     if (dom.wordlibSelector.options.length === 0 || dom.wordlibSelector.dataset.libs !== JSON.stringify(data.wordLibs.map(l=>l.name))) {
       dom.wordlibSelector.innerHTML = '';
       data.wordLibs.forEach(lib => {
@@ -1301,145 +1599,174 @@ function updateLobbyUI(data) {
     }
     dom.wordlibSelector.value = current;
   }
-
-  // 房主权限
+  // 显示设置
+  dom.settingsPanel.classList.remove('hidden');
+  document.querySelectorAll('.owner-only-control').forEach(el => el.style.display = state.isOwner ? '' : 'none');
+  document.querySelectorAll('.nonowner-text').forEach(el => el.style.display = state.isOwner ? 'none' : '');
   if (state.isOwner) {
-    dom.settingsPanel.classList.remove('hidden');
     dom.btnStartGame.classList.remove('hidden');
     dom.lobbyWaiting.classList.add('hidden');
   } else {
-    dom.settingsPanel.classList.add('hidden');
     dom.btnStartGame.classList.add('hidden');
     dom.lobbyWaiting.classList.remove('hidden');
   }
 }
 
 // ================================================================
-//   设置 & 开始
+//   游戏内玩家列表
 // ================================================================
-function setupSettings() {
-  dom.drawTimeSlider.addEventListener('input', () => {
-    dom.drawTimeDisplay.textContent = dom.drawTimeSlider.value;
-    if (state.isOwner && state.roomId) {
-      socket.emit('update_config', { drawTime: parseInt(dom.drawTimeSlider.value), guessTime: parseInt(dom.guessTimeSlider.value) });
-    }
-  });
-  dom.guessTimeSlider.addEventListener('input', () => {
-    dom.guessTimeDisplay.textContent = dom.guessTimeSlider.value;
-    if (state.isOwner && state.roomId) {
-      socket.emit('update_config', { drawTime: parseInt(dom.drawTimeSlider.value), guessTime: parseInt(dom.guessTimeSlider.value) });
-    }
-  });
-  // 词库切换
-  dom.wordlibSelector.addEventListener('change', () => {
-    const lib = dom.wordlibSelector.value;
-    dom.wordlibDisplay.textContent = lib;
-    if (state.isOwner && state.roomId) {
-      socket.emit('select_wordlib', { wordLib: lib });
-    }
-  });
-
-  dom.btnStartGame.addEventListener('click', () => {
-    socket.emit('start_game');
-  });
+function updatePlayerListUI() {
+  if (!state.players || state.players.length === 0) return;
+  const panel = document.getElementById('player-list-panel');
+  if (!panel) return;
+  // 只在面板可见时更新内容
+  if (panel.classList.contains('hidden')) return;
+  renderPlayerListPanel();
 }
 
-// ================================================================
-//   提交画作 / 猜词
-// ================================================================
-function setupSubmit() {
-  dom.btnSubmitDrawing.addEventListener('click', () => {
-    if (state.submitted) return;
-    socket.emit('submit_drawing', getCanvasDataURL());
-    state.submitted = true;
-    dom.btnSubmitDrawing.disabled = true;
-    dom.btnSubmitDrawing.textContent = '✅ 已提交';
+function renderPlayerListPanel() {
+  const panel = document.getElementById('player-list-panel');
+  if (!panel) return;
+  let html = '';
+  state.players.forEach(p => {
+    const isMe = p.id === state.myId;
+    const lat = p.connected ? latencyHtml(p.latency) : '<span style="color:#888;font-size:12px">离线</span>';
+    const nameColor = isMe ? '#e94560' : (p.connected ? '#eee' : '#888');
+    const av = p.avatar || '😀';
+    html += `<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;${isMe?'background:rgba(233,69,96,0.15)':''}">
+      <span style="font-size:28px">${av}</span>
+      <span style="color:${nameColor};font-size:16px;font-weight:${isMe?'bold':'normal'}">${p.nickname}${isMe?' (你)':''}</span>
+      <span style="margin-left:auto">${lat}</span>
+    </div>`;
   });
-
-  dom.btnSubmitGuess.addEventListener('click', () => {
-    submitGuess();
-  });
-  dom.guessInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') submitGuess();
-  });
+  panel.innerHTML = html;
 }
 
-function submitGuess() {
-  if (state.submitted) return;
-  const word = dom.guessInput.value.trim();
-  if (!word) {
-    showToast('请输入一个词语');
-    return;
+function setupPlayerList() {
+  const btn = document.getElementById('player-list-btn');
+  const panel = document.getElementById('player-list-panel');
+  if (!btn || !panel) return;
+
+  // 恢复上次拖拽位置
+  const savedPos = localStorage.getItem('playerListBtnPos');
+  if (savedPos) {
+    try {
+      const pos = JSON.parse(savedPos);
+      btn.style.left = pos.left + 'px';
+      btn.style.top = pos.top + 'px';
+    } catch(e) {}
+  } else {
+    // 默认位置
+    btn.style.left = '10px';
+    btn.style.top = '60px';
   }
-  socket.emit('submit_guess', word);
-  state.submitted = true;
-  dom.guessInput.disabled = true;
-  dom.btnSubmitGuess.disabled = true;
-  dom.btnSubmitGuess.textContent = '✅ 已提交';
-}
 
-// ================================================================
-//   返回大厅
-// ================================================================
-function setupBackToLobby() {
-  // 返回房间：重置游戏状态
-  dom.btnBackToRoom.addEventListener('click', () => {
-    socket.emit('back_to_room');
-    showToast('正在返回房间...');
-  });
-
-  // 复制房间号
-  dom.btnCopyRoomId.addEventListener('click', () => {
-    const roomId = state.roomId;
-    if (!roomId) return;
-    navigator.clipboard.writeText(roomId).then(() => {
-      showToast('✅ 已复制房间号：' + roomId);
-    }).catch(() => {
-      // fallback: 选中文本方式
-      const ta = document.createElement('textarea');
-      ta.value = roomId;
-      document.body.appendChild(ta);
-      ta.select();
-      document.execCommand('copy');
-      document.body.removeChild(ta);
-      showToast('✅ 已复制房间号：' + roomId);
-    });
-  });
-
-  // 退出房间
-  dom.btnLeaveRoom.addEventListener('click', () => {
-    socket.emit('leave_room');
-  });
-
-  // 返回大厅：房主转移
-  dom.btnBackToLobby.addEventListener('click', () => {
-    if (state.isOwner) {
-      socket.emit('transfer_owner');
-    }
-    localStorage.removeItem('draw_roomId');
-    localStorage.removeItem('draw_nickname');
-    socket.disconnect();
-    location.reload();
-  });
-}
-
-// ================================================================
-//   窗口调整
-// ================================================================
-window.addEventListener('resize', () => {
-  if (state.phase === 'game' && state.roundType === 'draw') {
-    resizeCanvas();
+  // 拖拽功能
+  let isDragging = false, hasMoved = false, startX, startY, origX, origY;
+  function onStart(e) {
+    isDragging = true;
+    hasMoved = false;
+    const rect = btn.getBoundingClientRect();
+    const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+    const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+    startX = clientX; startY = clientY;
+    origX = rect.left; origY = rect.top;
+    btn.style.cursor = 'grabbing';
+    btn.style.transition = 'none';
   }
-});
+  function onMove(e) {
+    if (!isDragging) return;
+    const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+    const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+    if (clientX === undefined) return;
+    const dx = clientX - startX;
+    const dy = clientY - startY;
+    btn.style.left = Math.max(0, origX + dx) + 'px';
+    btn.style.top = Math.max(0, origY + dy) + 'px';
+    if (!panel.classList.contains('hidden')) {
+      const pW = 200;
+      const pH = panel.offsetHeight || 200;
+      const maxX = window.innerWidth - pW - 4;
+      const maxY = window.innerHeight - pH - 4;
+      let px = parseInt(btn.style.left) || 10;
+      let py = (parseInt(btn.style.top) || 60) + 45;
+      if (px + pW > window.innerWidth - 4) px = Math.max(4, maxX);
+      if (px < 4) px = 4;
+      if (py + pH > window.innerHeight - 4) py = Math.max(4, (parseInt(btn.style.top) || 60) - pH - 4);
+      if (py < 4) py = 4;
+      panel.style.left = px + 'px';
+      panel.style.top = py + 'px';
+    }
+    if (Math.abs(dx) > 5 || Math.abs(dy) > 5) hasMoved = true;
+    e.preventDefault();
+  }
+  function onEnd(e) {
+    if (!isDragging) return;
+    isDragging = false;
+    btn.style.cursor = 'pointer';
+    btn.style.transition = '';
+    if (hasMoved) {
+      localStorage.setItem('playerListBtnPos', JSON.stringify({
+        left: parseInt(btn.style.left) || 10,
+        top: parseInt(btn.style.top) || 60
+      }));
+      // 阻止拖拽后的 click 事件
+      btn._dragJustCompleted = true;
+      setTimeout(() => { btn._dragJustCompleted = false; }, 100);
+    }
+  }
+  btn.addEventListener('mousedown', onStart);
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onEnd);
+  btn.addEventListener('touchstart', onStart, { passive: false });
+  document.addEventListener('touchmove', onMove, { passive: false });
+  document.addEventListener('touchend', onEnd);
 
-// ================================================================
-//   初始化
-// ================================================================
+  btn.onclick = (e) => {
+    // 拖拽刚结束不触发点击
+    if (btn._dragJustCompleted) return;
+    const isHidden = panel.classList.contains('hidden');
+    panel.classList.toggle('hidden');
+    if (isHidden) {
+      // 定位面板到按钮下方，自动适应屏幕边界
+      renderPlayerListPanel();
+      panel.style.left = '0px';
+      panel.style.top = '0px';
+      panel.classList.remove('hidden');
+      const pRect = panel.getBoundingClientRect();
+      const bRect = btn.getBoundingClientRect();
+      const w = pRect.width, h = pRect.height;
+      const maxX = window.innerWidth - w - 4;
+      const maxY = window.innerHeight - h - 4;
+      let px = Math.min(bRect.left, Math.max(4, maxX));
+      let py = bRect.bottom + 4;
+      if (py + h > window.innerHeight - 4) py = Math.max(4, bRect.top - h - 4);
+      panel.style.left = Math.max(4, Math.min(px, maxX)) + 'px';
+      panel.style.top = Math.max(4, Math.min(py, maxY)) + 'px';
+      // 点外部关闭
+      // 点外部关闭
+      setTimeout(() => {
+        const handler = (e) => {
+          if (!panel.contains(e.target) && e.target !== btn) {
+            panel.classList.add('hidden');
+            document.removeEventListener('click', handler);
+          }
+        };
+        document.addEventListener('click', handler);
+      }, 0);
+    }
+  };
+
+
+
+}
+
 function init() {
   connectSocket();
   initCanvas();
   initAvatarSelector();
   setupChat();
+  setupPlayerList();
   setupEntryUI();
   setupSettings();
   setupSubmit();

@@ -148,7 +148,7 @@ button { cursor:pointer; border:none; border-radius:10px; padding:14px 28px; fon
 }
 #review-chain-title { font-size:32px; margin-bottom:30px; color:#e94560; }
 #review-display { display:flex; flex-direction:column; align-items:center; gap:20px; width:100%; max-width:700px; }
-#review-image { max-width:100%; max-height:55vh; border-radius:12px; cursor:pointer; background:white; border:3px solid #555; }
+#review-image { width:100%; max-height:55vh; border-radius:12px; cursor:pointer; background:white; border:3px solid #555; object-fit:contain; min-height:200px; }
 #review-text-area { font-size:32px; font-weight:bold; min-height:60px; }
 #review-progress-bar { height:6px; background:#333; margin:30px 30px; border-radius:3px; }
 #review-progress-fill { height:100%; background:#e94560; border-radius:3px; transition:width .5s; }
@@ -177,8 +177,11 @@ button { cursor:pointer; border:none; border-radius:10px; padding:14px 28px; fon
 .artwork-card .artist-name { font-size:28px; font-weight:bold; color:#eee; }
 @keyframes heartBeat { 0%{transform:scale(1)} 100%{transform:scale(1.2)} }
 .vote-timer { font-size:36px; font-weight:bold; color:#e94560; margin:16px 0; }
-.vote-buttons { display:flex; gap:20px; justify-content:center; margin:24px 0; }
+.vote-buttons { display:flex; gap:20px; justify-content:center; margin:24px 0; flex-wrap:wrap; }
 .vote-btn { padding:20px 50px; font-size:28px; font-weight:bold; border-radius:14px; }
+@media (max-width:500px) {
+  .vote-btn { padding:14px 24px; font-size:22px; }
+}
 .vote-btn-correct { background:#2ecc71; color:white; }
 .vote-btn-incorrect { background:#e74c3c; color:white; }
 .artwork-option {
