@@ -79,13 +79,15 @@ function generateRoomId() {
   return id;
 }
 
-function getRandomWords(count) {
-  const shuffled = [...words].sort(() => Math.random() - 0.5);
+function getRandomWords(count, wordList) {
+  const list = wordList || words;
+  const shuffled = [...list].sort(() => Math.random() - 0.5);
   return shuffled.slice(0, count);
 }
 
-function pickRandomWord() {
-  return words[Math.floor(Math.random() * words.length)];
+function pickRandomWord(wordList) {
+  const list = wordList || words;
+  return list[Math.floor(Math.random() * list.length)];
 }
 
 // ============================================================
@@ -248,11 +250,11 @@ function nextStage(room) {
       let wordToDraw;
       if (round === 0) {
         // 第一轮作画：使用起点选择的词
-        wordToDraw = room.selectedWords.get(chain.startPlayerId) || pickRandomWord();
+        wordToDraw = room.selectedWords.get(chain.startPlayerId) || pickRandomWord(room._wordList);
       } else {
         // 后续作画轮：使用上一步猜词结果
         const prevGuess = room.chainGuesses[chainIndex] && room.chainGuesses[chainIndex][chainStepIndex - 1];
-        wordToDraw = prevGuess ? prevGuess.word : pickRandomWord();
+        wordToDraw = prevGuess ? prevGuess.word : pickRandomWord(room._wordList);
       }
 
       // 保存这个词到 chainDrawings 的元数据中
@@ -351,7 +353,7 @@ function handleRoundTimeout(room) {
         }
       } else {
         // 自动猜词：随机选一个
-        const guessedWord = pickRandomWord();
+        const guessedWord = pickRandomWord(room._wordList);
         if (!room.chainGuesses[chainIndex]) room.chainGuesses[chainIndex] = [];
         room.chainGuesses[chainIndex][chainStepIndex] = {
           word: guessedWord,
@@ -984,12 +986,10 @@ io.on('connection', (socket) => {
     io.to(room.id).emit('game_started', { K });
     systemToast(room, `🎮 游戏开始！共 ${chains.length} 条链条，每条 ${2*K} 步！`, 3000);
 
-    // 根据房间配置加载对应词库
+    // 根据房间配置加载对应词库（每次游戏开始时冻结词库快照，避免多房间互相影响）
     const libName = room.config.wordLib || '【简体中文】默认';
-    if (currentWordLib !== libName) {
-      currentWordLib = libName;
-      words.setCurrentLib(libName);
-    }
+    words.setCurrentLib(libName);
+    room._wordList = [...words]; // 冻结当前词库副本到房间
     // 进入选词阶段
     startWordSelection(room);
   });
@@ -1000,7 +1000,7 @@ io.on('connection', (socket) => {
     room.selectedWords = new Map();
 
     room.chains.forEach((chain) => {
-      const candidates = getRandomWords(3);
+      const candidates = getRandomWords(3, room._wordList);
       room.wordCandidates.set(chain.startPlayerId, candidates);
 
       const playerSocket = findPlayerSocket(chain.startPlayerId);
@@ -1173,7 +1173,7 @@ io.on('connection', (socket) => {
     if (room.chainGuesses[chainIndex] && room.chainGuesses[chainIndex][chainStepIndex]) return;
     if (!room.chainGuesses[chainIndex]) room.chainGuesses[chainIndex] = [];
     // data 是客户端传来的猜测词语字符串（空字符串则从词库随机选）
-    if (!data || data.trim() === '') data = pickRandomWord();
+    if (!data || data.trim() === '') data = pickRandomWord(room._wordList);
     room.chainGuesses[chainIndex][chainStepIndex] = {
       word: data,
       playerId: socket.id,
@@ -1449,10 +1449,10 @@ io.on('connection', (socket) => {
           if (isDraw) {
             let wordToDraw;
             if (round === 0) {
-              wordToDraw = room.selectedWords.get(chain.startPlayerId) || pickRandomWord();
+              wordToDraw = room.selectedWords.get(chain.startPlayerId) || pickRandomWord(room._wordList);
             } else {
               const prevGuess = room.chainGuesses[chainIndex] && room.chainGuesses[chainIndex][chainStepIndex - 1];
-              wordToDraw = prevGuess ? prevGuess.word : pickRandomWord();
+              wordToDraw = prevGuess ? prevGuess.word : pickRandomWord(room._wordList);
             }
             const existingDraw = room.chainDrawings[chainIndex]?.[chainStepIndex]?.data || null;
             socket.emit('round_start', {
