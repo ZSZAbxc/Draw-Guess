@@ -584,55 +584,6 @@ function startVotingPhase(room) {
   }, 20000);
 }
 
-function handleAccuracyVoteTimeout(room) {
-  clearRoomTimer(room);
-
-  // 计算正误投票结果
-  room.correctVotes = 0;
-  const chainIndex = room.currentChainIndex;
-  room.votesAccuracy.forEach((vote) => {
-    if (vote === 'correct') correctVotes++;
-  });
-
-  // 为最后猜词者加分 a = 每票 1 分
-  const chain = room.chains[chainIndex];
-  const lastStep = chain.steps[chain.steps.length - 1];
-  const guesserId = lastStep.playerId;
-
-  if (!room.scoreA.has(guesserId)) room.scoreA.set(guesserId, 0);
-  room.scoreA.set(guesserId, room.scoreA.get(guesserId) + (room.correctVotes || 0));
-
-  // 进入画作人气投票
-  systemToast(room, '🎨 现在为各画作投票！选择你最喜欢的画作！', 3000);
-
-  // 收集所有画作
-  const artworks = [];
-  for (let stepIdx = 0; stepIdx < chain.steps.length; stepIdx += 2) {
-    const drawIndex = Math.floor(stepIdx / 2);
-    const drawData = room.chainDrawings[chainIndex]?.[drawIndex];
-    if (drawData) {
-      artworks.push({
-        playerId: chain.steps[stepIdx].playerId,
-        nickname: chain.steps[stepIdx].nickname,
-        drawing: drawData.data,
-        prompt: drawData.word || ""
-      });
-    }
-  }
-
-  room.votePhase = 'artwork';
-  room.timerStart = Date.now();
-  io.to(room.id).emit('vote_request', {
-    type: 'artwork',
-    chainIndex,
-    timeout: getRemaining(room, 20),
-    data: { artworks }
-  });
-  
-  room.timer = setTimeout(() => {
-    handleArtworkVoteTimeout(room);
-  }, 20000);
-}
 
 function handleArtworkVoteTimeout(room) {
   if (room.state !== 'review') return;
