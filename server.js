@@ -932,33 +932,14 @@ io.on('connection', (socket) => {
     const player = room.players.find(p => p.id === socket.id);
     const nick = player?.nickname || '未知';
 
-    // 强制清除所有游戏数据（无论当前状态）
-    room.state = 'lobby';
-    room.K = 0;
-    room.currentRound = 0;
-    room.chains = [];
-    room.chainDrawings = [];
-    room.chainGuesses = [];
-    room.scoreA = new Map();
-    room.scoreB = new Map();
-    room.selectedWords = new Map();
-    room.wordCandidates = new Map();
-    room.submissions = new Set();
-    room.currentChainIndex = 0;
-    room.reviewStepIndex = 0;
-    room.reviewLog = [];
-    room.votePhase = null;
-    room.votesAccuracy = new Map();
-    room.votesArtwork = new Map();
-    room.timerStart = null;
+    // 仅清除该玩家的结算标记，不改变房间状态
     if (player) player.settling = false;
     if (room._disconnected) room._disconnected.clear();
     clearRoomTimer(room);
 
-    broadcastRoomUpdate(room);
     socket.emit('back_to_room_ok');
     socket.to(room.id).emit('player_returned', { nickname: nick });
-    systemToast(room, `🔄 ${nick} 已回到房间等待`, 2000);
+    broadcastRoomUpdate(room);
   });
 
   // ----- 开始游戏 -----
@@ -1645,12 +1626,10 @@ io.on('connection', (socket) => {
       if (nextOwner) nextOwner.isOwner = true;
     }
 
-    // 清除所有玩家的结算标记
-    room.players.forEach(p => { p.settling = false; });
-
+    // 清除离开者的结算标记即可，不影响其他玩家
     clearRoomTimer(room);
     broadcastRoomUpdate(room);
-    systemToast(room, `🔄 ${player.nickname} 离开了房间，${room.players.find(p => p.isOwner)?.nickname || '?'} 成为新房主`, 3000);
+    systemToast(room, `${player.nickname} 离开了房间，${room.players.find(p => p.isOwner)?.nickname || '?'} 成为新房主`, 3000);
   });
 });
 
