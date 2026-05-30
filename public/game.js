@@ -1160,13 +1160,13 @@ function showReviewStep(data) {
   } else if (data.type === 'guess_normal') {
     dom.reviewTextArea.innerHTML = `${info.player} 猜：<strong>${info.word}</strong>`;
   } else if (data.type === 'guess_timeout') {
-    dom.reviewTextArea.innerHTML = `${info.player} 猜：<strong class="system-word">${info.word}（系统生成·超时）</strong>`;
+    dom.reviewTextArea.innerHTML = `${info.player} 什么也没猜出来，新的词语：<strong>${info.word}</strong>（系统生成）`;
   } else if (data.type === 'draw_step' || data.type === 'final_draw') {
     dom.reviewTextArea.innerHTML = `词语：<strong>${info.word}</strong>`;
   } else if (data.type === 'final_guess') {
     let html = `${info.player} 最终猜词：<strong>${info.word}</strong>`;
     if (info.isSystemGenerated) {
-      html = `${info.player} 最终猜词：<strong class="system-word">${info.word}（系统生成·超时）</strong>`;
+      html = `${info.player} 什么也没猜出来，新的词语：<strong>${info.word}</strong>（系统生成）`;
     }
     dom.reviewTextArea.innerHTML = html;
   }
