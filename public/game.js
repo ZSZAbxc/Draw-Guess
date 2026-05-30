@@ -186,8 +186,6 @@ let lastX = 0, lastY = 0;
 let selectedColor = '#000000';
 let brushWidth = 2.5; // 细笔默认
 let isEraser = false; // 是否橡皮擦模式
-let recordedStrokes = []; // 记录画笔轨迹用于回顾回放
-let currentStroke = null; // 当前笔画
 
 
 function setupSettings() {
@@ -232,10 +230,9 @@ function submitGuess() {
 function setupSubmit() {
   dom.btnSubmitDrawing.addEventListener('click', () => {
     if (state.submitted) return;
-    socket.emit('submit_drawing', { image: getCanvasDataURL(), strokes: recordedStrokes });
+    socket.emit('submit_drawing', { image: getCanvasDataURL(),  });
     state.submitted = true;
-    recordedStrokes = [];
-    dom.btnSubmitDrawing.disabled = true;
+        dom.btnSubmitDrawing.disabled = true;
     dom.btnSubmitDrawing.textContent = '✅ 已提交';
   });
   dom.btnSubmitGuess.addEventListener('click', () => {
@@ -358,8 +355,6 @@ function startDrawing(e) {
   const pos = getCanvasPos(e);
   lastX = pos.x;
   lastY = pos.y;
-  // 开始记录新笔画
-  currentStroke = { points: [{ x: lastX, y: lastY }], color: selectedColor, width: brushWidth, eraser: isEraser };
 }
 
 function draw(e) {
@@ -374,8 +369,6 @@ function draw(e) {
   ctx.lineWidth = brushWidth;
   ctx.stroke();
   ctx.globalCompositeOperation = 'source-over';
-  // 记录轨迹点
-  if (currentStroke) currentStroke.points.push({ x: lastX, y: lastY });
   lastX = pos.x;
   lastY = pos.y;
 }
@@ -383,10 +376,6 @@ function draw(e) {
 function stopDrawing(e) {
   if (e) e.preventDefault();
   isDrawing = false;
-  if (currentStroke && currentStroke.points.length > 1) {
-    recordedStrokes.push(currentStroke);
-  }
-  currentStroke = null;
 }
 
 function setupCanvasEvents() {
@@ -430,8 +419,6 @@ function clearCanvas() {
   if (!ctx) return;
   ctx.fillStyle = 'white';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-  recordedStrokes = [];
-  currentStroke = null;
 }
 
 function getCanvasDataURL() {
@@ -716,7 +703,7 @@ function connectSocket() {
           dom.btnSubmitDrawing.textContent = '✅ 提交画作';
           startTimer(data.timeout, () => {
             if (!state.submitted) {
-              socket.emit('submit_drawing', { image: getCanvasDataURL(), strokes: recordedStrokes });
+              socket.emit('submit_drawing', { image: getCanvasDataURL(),  });
               state.submitted = true;
               dom.btnSubmitDrawing.disabled = true;
               dom.drawWaiting.classList.remove('hidden');
@@ -746,7 +733,7 @@ function connectSocket() {
       }
       startTimer(data.timeout, () => {
         if (!state.submitted) {
-          socket.emit('submit_drawing', { image: getCanvasDataURL(), strokes: recordedStrokes });
+          socket.emit('submit_drawing', { image: getCanvasDataURL(),  });
           state.submitted = true;
           dom.btnSubmitDrawing.disabled = true;
           dom.drawWaiting.classList.remove('hidden');
@@ -755,7 +742,7 @@ function connectSocket() {
     } else {
       dom.drawArea.classList.add('hidden');
       dom.guessArea.classList.remove('hidden');
-      dom.guessImage.src = data.yourTask.imageBase64;
+      dom.guessImage.src = data.yourTask.imageBase64 || '';
       if (data.yourTask.existingGuess) {
         // 重连时已提交猜词
         state.submitted = true;
@@ -824,7 +811,7 @@ function connectSocket() {
     stopTimer();
     // 作画阶段未提交则立即提交画布内容
     if (state.roundType === 'draw' && !state.submitted) {
-      socket.emit('submit_drawing', { image: getCanvasDataURL(), strokes: recordedStrokes });
+      socket.emit('submit_drawing', { image: getCanvasDataURL(),  });
       state.submitted = true;
       dom.btnSubmitDrawing.disabled = true;
     }
@@ -1161,18 +1148,10 @@ function showReviewStep(data) {
 
   if (info.drawing) {
     // 检测是否为空白画布（超时自动提交的 1x1 像素白图）
-    const isBlank = info.drawing.length < 200;
-    // 画作步骤：先回放绘画过程（5倍速），再展示完成图
+    // 直接显示最终画作
     const label = document.getElementById('review-artist-label');
     if (label) label.textContent = `✏️ ${info.player}`;
-    if (isBlank) {
-      // 如果已经收到补交画作，跳过白背景
-      if (state._reviewUpdated) return;
-      dom.reviewImage.style.background = '#fff';
-      return;
-    }
-    // 直接显示最终画作（跳过回放，确保高延迟客户端也能稳定看到）
-    dom.reviewImage.src = info.drawing;
+    dom.reviewImage.src = info.drawing || '';
   }
   // else: 猜词步骤—保留上一张画和作者标签，不碰
 

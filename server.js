@@ -380,7 +380,7 @@ function advanceToNextRound(room) {
 
 // 生成空白画布的 base64
 function createBlankCanvas() {
-  return 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPj/HwADBwIAMCbHYQAAAABJRU5ErkJggg==';
+  return 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="600" height="400" viewBox="0 0 600 400"><rect width="600" height="400" fill="#ffffff"/></svg>');
 }
 
 // ============================================================
@@ -452,7 +452,6 @@ function processNextReviewStep(room) {
       data: {
         word: initWord,
         drawing: initDrawing,
-        strokes: room.chainDrawings[room.currentChainIndex]?.[0]?.strokes || [],
         player: room.chainDrawings[room.currentChainIndex]?.[0]
           ? chain.steps[0].nickname : chain.startNickname
       }
@@ -483,7 +482,6 @@ function processNextReviewStep(room) {
         data: {
           word: drawData?.word || '（未知）',
           drawing: drawData?.data || null,
-          strokes: drawData?.strokes || [],
           player: step.nickname
         }
       });
@@ -1132,14 +1130,12 @@ io.on('connection', (socket) => {
     const chainIndex = room.chains.indexOf(chain);
     if (chainIndex === -1) return;
     if (!room.chainDrawings[chainIndex]) room.chainDrawings[chainIndex] = [];
-    // data 是客户端传来的对象 { image, strokes }
+    // data 是客户端传来的 base64 或 { image } 对象
     const imgData = typeof data === 'string' ? data : data.image;
-    const strokes = typeof data === 'string' ? [] : (data.strokes || []);
     const existingData = room.chainDrawings[chainIndex][chainStepIndex];
     room.chainDrawings[chainIndex][chainStepIndex] = {
       word: existingData?.word || pickRandomWord(),
-      data: imgData,
-      strokes: strokes
+      data: imgData
     };
 
     // 补交上一轮的画作
