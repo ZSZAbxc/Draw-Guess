@@ -940,6 +940,8 @@ io.on('connection', (socket) => {
 
     // 仅清除该玩家的结算标记，不改变房间状态
     if (player) player.settling = false;
+    room.reviewLog = [];
+    room.reviewStepIndex = 0;
     if (room._disconnected) room._disconnected.clear();
     clearRoomTimer(room);
 
@@ -983,6 +985,7 @@ io.on('connection', (socket) => {
     room.selectedWords = new Map();
     room.submissions = new Set();
     room.reviewLog = [];
+    room.reviewStepIndex = 0;
     room.votePhase = null;
     room.votesAccuracy = new Map();
     room.votesArtwork = new Map();
