@@ -1,8 +1,0 @@
-version: "2019-09-01"
-services:
-  - name: draw-guess
-    build:
-      dockerfile: ./Dockerfile
-    ports:
-      - port: 80
-        targetPort: 3000
