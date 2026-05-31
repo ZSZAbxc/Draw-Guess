@@ -1,0 +1,3 @@
+# cloudbaserun.yaml
+build:
+  dockerfile: ./Dockerfile
