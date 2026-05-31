@@ -58,7 +58,7 @@
       <div id="settings-panel">
         <div class="setting-row owner-only-control">
           <label>🎨 作画时间：<span id="draw-time-display">60</span>秒</label>
-          <input type="range" id="draw-time-slider" min="10" max="120" value="60" step="5">
+          <input type="range" id="draw-time-slider" min="10" max="180" value="60" step="10">
         </div>
         <div class="setting-row owner-only-control">
           <label>💬 猜词时间：<span id="guess-time-display">20</span>秒</label>
@@ -67,6 +67,12 @@
         <div class="setting-row owner-only-control">
           <label>📖 词库：<span id="wordlib-display">默认</span></label>
           <select id="wordlib-selector" style="width:100%;padding:10px;border:2px solid #444;border-radius:8px;background:#2a2a3e;color:#eee;font-size:18px;margin-top:4px"></select>
+        </div>
+        <div class="setting-row">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="checkbox" id="clever-idea-checkbox"> 💡 灵机一动
+          </label>
+          <div style="font-size:12px;color:#888;margin-top:2px">游戏开始时，上家提供一个额外的可选初始词</div>
         </div>
         <div class="setting-row nonowner-text" style="display:none">
           <div>🎨 作画时间：<strong><span id="ndraw-time">60</span>秒</strong></div>
@@ -118,10 +124,17 @@
     <div class="draw-toolbar">
       <div id="color-palette"></div>
       <div style="display:flex;align-items:center;gap:8px;margin-left:4px">
-        <button id="btn-brush-fine" class="brush-btn active" style="width:36px;height:36px;border-radius:50%;background:#555;color:white;border:3px solid transparent;font-size:12px;padding:0;display:flex;align-items:center;justify-content:center" title="细笔">─</button>
-        <button id="btn-brush-thick" class="brush-btn" style="width:36px;height:36px;border-radius:50%;background:#555;color:white;border:3px solid transparent;font-size:20px;padding:0;display:flex;align-items:center;justify-content:center;font-weight:bold" title="粗笔">━</button>
+        <button id="btn-brush-size" class="brush-btn active" style="width:36px;height:36px;border-radius:50%;background:#555;color:white;border:3px solid transparent;font-size:12px;padding:0;display:flex;align-items:center;justify-content:center;position:relative" title="画笔粗细">─</button>
       </div>
       <button id="btn-eraser" style="background:#555;color:white;padding:6px 14px;font-size:18px;border-radius:8px;border:3px solid transparent">🧹 擦</button>
+      <!-- 粗细选择滑块 -->
+      <div id="brush-size-panel" class="hidden" style="position:fixed;background:rgba(0,0,0,0.85);backdrop-filter:blur(4px);border-radius:10px;padding:16px 24px;z-index:2500;border:1px solid rgba(255,255,255,0.15)">
+        <div style="font-size:14px;color:#ccc;margin-bottom:8px;text-align:center">画笔粗细：<span id="brush-size-label">2.5px</span></div>
+        <input type="range" id="brush-size-slider" min="0" max="4" value="0" step="1" style="width:200px;height:6px;accent-color:#e94560">
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:#888;margin-top:4px;padding:0 4px">
+          <span>细</span><span>─</span><span>─</span><span>─</span><span>粗</span>
+        </div>
+      </div>
       <button id="btn-clear-canvas">🗑️ 清空</button>
     </div>
     <div class="canvas-wrapper">
@@ -153,6 +166,17 @@
       <div style="width:100%;height:8px;background:#333;border-radius:4px;margin-top:8px;overflow:hidden">
         <div id="word-select-progress" style="width:100%;height:100%;background:#e94560;border-radius:4px;transition:transform .3s linear;transform-origin:center"></div>
       </div>
+    </div>
+  </div>
+
+  <!-- 灵机一动输入弹窗 -->
+  <div id="clever-idea-overlay" class="hidden overlay" style="z-index:2500">
+    <div class="modal" style="max-width:500px;padding:40px">
+      <div style="font-size:28px;margin-bottom:10px">💡 灵机一动</div>
+      <p style="font-size:20px;color:#ccc">给 <strong id="clever-for-player" style="color:#e94560"></strong> 提供一个初始词</p>
+      <input type="text" id="clever-idea-input" placeholder="输入一个词语（留空则系统随机生成）" maxlength="10" style="width:100%;padding:14px;font-size:20px;border:2px solid #555;border-radius:8px;background:#2a2a3e;color:#eee;margin:16px 0;box-sizing:border-box">
+      <div style="font-size:14px;color:#888" id="clever-timer"></div>
+      <button id="btn-submit-clever" style="width:100%;padding:14px;font-size:22px;background:#e94560;color:white;border:none;border-radius:8px;margin-top:12px;cursor:pointer">✅ 确认</button>
     </div>
   </div>
 

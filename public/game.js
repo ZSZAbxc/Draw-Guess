@@ -64,6 +64,11 @@ dom.lobbyWaiting       = $('lobby-waiting');
 dom.settingsPanel      = $('settings-panel');
 dom.wordlibDisplay     = $('wordlib-display');
 dom.wordlibSelector    = $('wordlib-selector');
+dom.cleverIdeaOverlay  = $('clever-idea-overlay');
+dom.cleverForPlayer    = $('clever-for-player');
+dom.cleverIdeaInput    = $('clever-idea-input');
+dom.cleverTimer        = $('clever-timer');
+dom.btnSubmitClever    = $('btn-submit-clever');
 
 // 游戏
 dom.roundInfo          = $('round-info');
@@ -211,6 +216,16 @@ function setupSettings() {
   dom.btnStartGame.addEventListener('click', () => {
     socket.emit('start_game');
   });
+
+  // 灵机一动开关
+  const cleverCheck = document.getElementById('clever-idea-checkbox');
+  if (cleverCheck) {
+    cleverCheck.addEventListener('change', () => {
+      if (state.isOwner && state.roomId) {
+        socket.emit('update_config', { cleverIdea: cleverCheck.checked });
+      }
+    });
+  }
 }
 
 function submitGuess() {
@@ -288,21 +303,51 @@ function initCanvas() {
     }
   }
   if (eraserBtn) eraserBtn.addEventListener('click', () => setEraser(!isEraser));
-  // 画笔大小切换
-  const fineBtn = document.getElementById('btn-brush-fine');
-  const thickBtn = document.getElementById('btn-brush-thick');
+  // 粗细选择滑块（5 档）
+  const BRUSH_SIZES = [2.5, 8, 14, 19, 25];
+  const brushBtn = document.getElementById('btn-brush-size');
+  const brushPanel = document.getElementById('brush-size-panel');
+  const brushSlider = document.getElementById('brush-size-slider');
+  const brushLabel = document.getElementById('brush-size-label');
   function setBrush(size) {
     brushWidth = size;
     if (ctx) ctx.lineWidth = brushWidth;
-    if (fineBtn && thickBtn) {
-      [fineBtn, thickBtn].forEach(b => b.style.borderColor = 'transparent');
-      (size <= 3 ? fineBtn : thickBtn).style.borderColor = '#e94560';
+    const idx = BRUSH_SIZES.indexOf(size);
+    if (idx >= 0 && brushBtn) {
+      // 更新按钮内横线表示粗细（保持中心对齐）
+      const thickness = [2,4,6,10,14][idx];
+      brushBtn.innerHTML = '<span style="display:inline-block;width:20px;height:'+thickness+'px;background:#eee;border-radius:'+(thickness/2)+'px;vertical-align:middle"></span>';
     }
+    if (brushSlider) brushSlider.value = idx >= 0 ? idx : 0;
+    if (brushLabel) brushLabel.textContent = size + 'px';
   }
-  // 默认选中细笔
   setBrush(2.5);
-  if (fineBtn) fineBtn.addEventListener('click', () => setBrush(2.5));
-  if (thickBtn) thickBtn.addEventListener('click', () => setBrush(12.5));
+  if (brushBtn) {
+    brushBtn.onclick = () => {
+      const isHidden = brushPanel.classList.contains('hidden');
+      brushPanel.classList.toggle('hidden');
+      if (isHidden) {
+        // 定位到粗细按钮下方
+        const rect = brushBtn.getBoundingClientRect();
+        brushPanel.style.left = Math.max(4, rect.left + rect.width/2 - 120) + 'px';
+        brushPanel.style.top = (rect.bottom + 4) + 'px';
+        brushPanel.style.bottom = 'auto';
+      }
+    };
+  }
+  if (brushSlider) {
+    brushSlider.addEventListener('input', () => {
+      const idx = parseInt(brushSlider.value);
+      setBrush(BRUSH_SIZES[idx]);
+    });
+  }
+  // 点击面板外部关闭
+  document.addEventListener('click', (e) => {
+    if (brushPanel && !brushPanel.classList.contains('hidden') &&
+        !brushPanel.contains(e.target) && e.target !== brushBtn) {
+      brushPanel.classList.add('hidden');
+    }
+  });
 }
 
 function resizeCanvas() {
@@ -393,26 +438,89 @@ function buildPalette() {
     '#000000','#ffffff','#e74c3c','#e67e22','#f1c40f','#2ecc71',
     '#1abc9c','#3498db','#9b59b6','#e84393','#95a5a6','#8B4513'
   ];
+  // 生成色块列表：每个基色 + 一个过渡色
+  function lerpColor(a, b, t) {
+    const ca = [parseInt(a.slice(1,3),16), parseInt(a.slice(3,5),16), parseInt(a.slice(5,7),16)];
+    const cb = [parseInt(b.slice(1,3),16), parseInt(b.slice(3,5),16), parseInt(b.slice(5,7),16)];
+    return '#' + [0,1,2].map(i => Math.round(ca[i] + (cb[i] - ca[i]) * t).toString(16).padStart(2,'0')).join('');
+  }
+  const blocks = [];
+  for (let i = 0; i < colors.length; i++) {
+    if (i > 0) blocks.push(lerpColor(colors[i-1], colors[i], 0.5)); // 过渡色
+    blocks.push(colors[i]); // 基色
+  }
   dom.colorPalette.innerHTML = '';
-  colors.forEach(c => {
-    const swatch = document.createElement('div');
-    swatch.className = 'color-swatch' + (c === selectedColor ? ' active' : '');
-    swatch.style.background = c;
-    if (c === '#ffffff') swatch.style.border = '2px solid #888';
-    swatch.dataset.color = c;
-    swatch.addEventListener('click', () => {
-      document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'));
-      swatch.classList.add('active');
-      selectedColor = c;
-      // 强制切换到画笔模式
-      if (isEraser) {
-        isEraser = false;
-        const eb = document.getElementById('btn-eraser');
-        if (eb) eb.style.borderColor = 'transparent';
-      }
-    });
-    dom.colorPalette.appendChild(swatch);
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'position:relative;padding-top:12px;width:100%;max-width:400px;margin:0 auto';
+  const bar = document.createElement('canvas');
+  bar.id = 'color-gradient-bar';
+  bar.width = 600;
+  bar.height = 40;
+  bar.style.cssText = 'width:100%;height:32px;border-radius:8px;cursor:pointer;display:block';
+  const ctx = bar.getContext('2d');
+  const blockW = bar.width / blocks.length;
+  blocks.forEach((c, i) => {
+    ctx.fillStyle = c;
+    ctx.fillRect(i * blockW, 0, blockW + 1, bar.height);
+    // 基色块加分隔线
+    if (blocks.indexOf(c) % 2 === 1) {
+      ctx.strokeStyle = 'rgba(0,0,0,0.15)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(i * blockW, 0);
+      ctx.lineTo(i * blockW, bar.height);
+      ctx.stroke();
+    }
   });
+  // 选中方框指示器（5px 边框，居中对齐色块）
+  const indicator = document.createElement('div');
+  indicator.id = 'color-indicator';
+  indicator.style.cssText = 'position:absolute;pointer-events:none;border:5px solid #e94560;border-radius:6px;transition:left .08s,width .08s;box-sizing:border-box';
+  wrap.appendChild(bar);
+  wrap.appendChild(indicator);
+  dom.colorPalette.appendChild(wrap);
+
+  function updateIndicator(blockIndex) {
+    const idx = Math.max(0, Math.min(blocks.length - 1, Math.round(blockIndex)));
+    selectedColor = blocks[idx];
+    const barRect = bar.getBoundingClientRect();
+    const wrapRect = wrap.getBoundingClientRect();
+    const blockWPct = 1 / blocks.length;
+    // 方框比色块大 5px（边框本身），居中于色块
+    const barTop = bar.offsetTop;
+    indicator.style.left = (idx / blocks.length * barRect.width - 5) + 'px';
+    indicator.style.width = (blockWPct * barRect.width + 10) + 'px';
+    indicator.style.top = (barTop - 5) + 'px';
+    indicator.style.height = (barRect.height + 10) + 'px';
+    indicator.style.background = selectedColor + '33';
+    if (isEraser) {
+      isEraser = false;
+      const eb = document.getElementById('btn-eraser');
+      if (eb) eb.style.borderColor = 'transparent';
+    }
+  }
+
+  function posToBlock(e) {
+    const rect = bar.getBoundingClientRect();
+    const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+    if (clientX === undefined) return 0;
+    const pct = (clientX - rect.left) / rect.width;
+    return Math.floor(Math.max(0, Math.min(blocks.length - 1, pct * blocks.length)));
+  }
+
+  bar.addEventListener('click', (e) => updateIndicator(posToBlock(e)));
+  bar.addEventListener('mousedown', () => { bar._drag = true; });
+  document.addEventListener('mousemove', (e) => {
+    if (!bar._drag) return;
+    const rect = bar.getBoundingClientRect();
+    if (e.clientY >= rect.top - 30 && e.clientY <= rect.bottom + 30) {
+      updateIndicator(posToBlock(e));
+    }
+  });
+  document.addEventListener('mouseup', () => { bar._drag = false; });
+  bar.addEventListener('touchstart', (e) => { updateIndicator(posToBlock(e)); }, { passive: true });
+  bar.addEventListener('touchmove', (e) => { updateIndicator(posToBlock(e)); }, { passive: false });
+  updateIndicator(0);
 }
 
 function clearCanvas() {
@@ -516,6 +624,33 @@ function connectSocket() {
     }
   });
 
+  // 灵机一动：接收输入提示
+  socket.on('clever_idea_input', (data) => {
+    dom.cleverIdeaOverlay.classList.remove('hidden');
+    dom.cleverForPlayer.textContent = data.forPlayer;
+    dom.cleverIdeaInput.value = '';
+    dom.cleverTimer.textContent = '⏱ ' + data.timeout + 's';
+    let remaining = data.timeout;
+    const timerInterval = setInterval(() => {
+      remaining--;
+      if (remaining <= 0) { clearInterval(timerInterval); dom.cleverTimer.textContent = '⏱ 0s'; }
+      else { dom.cleverTimer.textContent = '⏱ ' + remaining + 's'; }
+    }, 1000);
+    function submitClever() {
+      if (dom.cleverIdeaOverlay.classList.contains('hidden')) return;
+      const word = dom.cleverIdeaInput.value.trim();
+      socket.emit('submit_clever_word', word);
+      dom.cleverIdeaOverlay.classList.add('hidden');
+      clearInterval(timerInterval);
+    }
+    dom.btnSubmitClever.onclick = submitClever;
+    dom.cleverIdeaInput.onkeydown = (e) => {
+      if (e.key === 'Enter') submitClever();
+    };
+    // 超时自动提交
+    setTimeout(submitClever, data.timeout * 1000);
+  });
+
   socket.on('your_latency', (data) => {
     const el = document.getElementById('global-latency');
     if (el) {
@@ -616,6 +751,7 @@ function connectSocket() {
     state.submitted = false;
     state.reviewChains = [];
     dom.wordSelectOverlay.classList.add('hidden');
+    dom.cleverIdeaOverlay.classList.add('hidden');
     // 游戏开始时玩家列表按钮移到右上角
     const pbtn = document.getElementById('player-list-btn');
     if (pbtn) {
@@ -1556,6 +1692,8 @@ function updateLobbyUI(data) {
     dom.guessTimeDisplay.textContent = data.config.guessTime || 20;
     const current = data.config.wordLib || '默认';
     dom.wordlibDisplay.textContent = current;
+    const cc = document.getElementById('clever-idea-checkbox');
+    if (cc) cc.checked = !!data.config.cleverIdea;
     const ndt = document.getElementById('ndraw-time');
     const ngt = document.getElementById('nguess-time');
     const nwl = document.getElementById('nwordlib');

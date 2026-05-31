@@ -136,7 +136,8 @@ function createRoom(id, socket, nickname, password, avatar) {
     config: {
       drawTime: 60,
       guessTime: 20,
-      wordLib: '【简体中文】默认'
+      wordLib: '【简体中文】默认',
+      cleverIdea: false
     },
     K: 0,
     chains: [],
@@ -347,7 +348,7 @@ function handleRoundTimeout(room) {
           const blankDataUrl = createBlankCanvas();
           if (!room.chainDrawings[chainIndex]) room.chainDrawings[chainIndex] = [];
           room.chainDrawings[chainIndex][chainStepIndex] = {
-            word: room.chainDrawings[chainIndex][chainStepIndex]?.word || pickRandomWord(),
+            word: room.chainDrawings[chainIndex][chainStepIndex]?.word || pickRandomWord(room._wordList),
             data: blankDataUrl
           };
         }
@@ -737,7 +738,7 @@ function finishGame(room) {
   room.votesArtwork = new Map();
   room._disconnected = new Map();
   room.timerStart = null;
-  room.config = { drawTime: room.config.drawTime, guessTime: room.config.guessTime, wordLib: room.config.wordLib || '【简体中文】默认' };
+  room.config = { drawTime: room.config.drawTime, guessTime: room.config.guessTime, wordLib: room.config.wordLib || '【简体中文】默认', cleverIdea: room.config.cleverIdea || false };
 }
 
 // ============================================================
@@ -852,10 +853,13 @@ io.on('connection', (socket) => {
     if (!player?.isOwner) return;
 
     if (data.drawTime !== undefined) {
-      room.config.drawTime = Math.max(10, Math.min(120, parseInt(data.drawTime) || 60));
+      room.config.drawTime = Math.max(10, Math.min(180, parseInt(data.drawTime) || 60));
     }
     if (data.guessTime !== undefined) {
       room.config.guessTime = Math.max(10, Math.min(60, parseInt(data.guessTime) || 20));
+    }
+    if (data.cleverIdea !== undefined) {
+      room.config.cleverIdea = !!data.cleverIdea;
     }
 
     broadcastRoomUpdate(room);
@@ -964,6 +968,8 @@ io.on('connection', (socket) => {
       return;
     }
 
+    // 随机打乱玩家顺序，让链条关系每次不同
+    room.players.sort(() => Math.random() - 0.5);
     // 生成链条
     const { chains, K } = generateChains(room.players);
     room.chains = chains;
@@ -990,8 +996,115 @@ io.on('connection', (socket) => {
     const libName = room.config.wordLib || '【简体中文】默认';
     words.setCurrentLib(libName);
     room._wordList = [...words]; // 冻结当前词库副本到房间
-    // 进入选词阶段
-    startWordSelection(room);
+    // 如果开启灵机一动，先进入玩家提供初始词阶段
+    if (room.config.cleverIdea) {
+      startCleverIdeaPhase(room);
+    } else {
+      startWordSelection(room);
+    }
+  });
+
+  // ----- 灵机一动阶段：每个玩家提供一个初始词给下家 -----
+  function startCleverIdeaPhase(room) {
+    room.state = 'clever_idea';
+    room._cleverWords = new Map(); // playerId -> word
+
+    // 给每位玩家发提示输入（按链条顺序，player i 给 player (i+1) % N 提供词）
+    room.players.forEach((p, i) => {
+      const nextPlayer = room.players[(i + 1) % room.players.length];
+      const playerSocket = findPlayerSocket(p.id);
+      if (playerSocket && playerSocket.connected) {
+        playerSocket.emit('clever_idea_input', {
+          timeout: Math.max(10, room.config.guessTime),
+          forPlayer: nextPlayer.nickname
+        });
+      } else {
+        // 离线玩家：系统随机生成
+        room._cleverWords.set(p.id, pickRandomWord(room._wordList));
+      }
+    });
+
+    // 超时处理
+    room.timerStart = Date.now();
+    room.timer = setTimeout(() => {
+      room.players.forEach(p => {
+        if (!room._cleverWords.has(p.id)) {
+          room._cleverWords.set(p.id, pickRandomWord(room._wordList));
+        }
+      });
+      // 进入正式选词阶段，将灵机一动的词设为候选之一
+      if (!room.wordCandidates || room.wordCandidates.size === 0) {
+        room.wordCandidates = new Map();
+        room.chains.forEach((chain) => {
+          const candidates = getRandomWords(3, room._wordList);
+          room.wordCandidates.set(chain.startPlayerId, candidates);
+        });
+      }
+      applyCleverWordsToSelection(room);
+    }, Math.max(10, room.config.guessTime) * 1000);
+  }
+
+  // 将灵机一动的词整合到选词候选
+  function applyCleverWordsToSelection(room) {
+    room.state = 'word_select';
+    // 玩家 i 提供的词 -> 给玩家 (i+1) % N
+    room.players.forEach((p, i) => {
+      const prevPlayer = room.players[(i - 1 + room.players.length) % room.players.length];
+      const cleverWord = room._cleverWords.get(prevPlayer.id);
+      if (cleverWord) {
+        // 替换候选中的第一个为灵机一动词
+        const candidates = room.wordCandidates.get(p.id);
+        if (candidates && candidates.length > 0) {
+          candidates[0] = cleverWord;
+          // 打乱顺序，让玩家看不出哪个是上家提供的
+          candidates.sort(() => Math.random() - 0.5);
+        }
+      }
+    });
+    // 将候选词重新发送给玩家
+    room.chains.forEach((chain, ci) => {
+      const playerSocket = findPlayerSocket(chain.startPlayerId);
+      if (playerSocket && playerSocket.connected) {
+        const candidates = room.wordCandidates.get(chain.startPlayerId);
+        if (candidates) {
+          playerSocket.emit('word_select', {
+            candidates,
+            timeout: room.config.guessTime,
+            chainIndex: ci
+          });
+        }
+      }
+    });
+  }
+
+  // ----- 灵机一动提交 -----
+  socket.on('submit_clever_word', (word) => {
+    const room = findRoomBySocket(socket);
+    if (!room || room.state !== 'clever_idea') return;
+
+    room._cleverWords.set(socket.id, word && word.trim() ? word.trim() : pickRandomWord(room._wordList));
+
+    // 检查是否全部提交
+    let allDone = true;
+    room.players.forEach(p => {
+      if (!room._cleverWords.has(p.id)) allDone = false;
+    });
+
+    if (allDone) {
+      clearRoomTimer(room);
+      // 先生成候选词，再整合
+      room.wordCandidates = new Map();
+      room.chains.forEach((chain) => {
+        const candidates = getRandomWords(3, room._wordList);
+        room.wordCandidates.set(chain.startPlayerId, candidates);
+      });
+      applyCleverWordsToSelection(room);
+    } else {
+      // 广播进度
+      const submitted = room._cleverWords.size;
+      const total = room.players.length;
+      socket.emit('submit_progress', { submitted, total });
+    }
   });
 
   // ----- 选词 -----
@@ -1115,7 +1228,7 @@ io.on('connection', (socket) => {
     const imgData = typeof data === 'string' ? data : data.image;
     const existingData = room.chainDrawings[chainIndex][chainStepIndex];
     room.chainDrawings[chainIndex][chainStepIndex] = {
-      word: existingData?.word || pickRandomWord(),
+      word: existingData?.word || pickRandomWord(room._wordList),
       data: imgData
     };
 
