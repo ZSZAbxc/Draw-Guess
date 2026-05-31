@@ -1047,6 +1047,7 @@ io.on('connection', (socket) => {
   // 将灵机一动的词整合到选词候选
   function applyCleverWordsToSelection(room) {
     room.state = 'word_select';
+    room.selectedWords = new Map();
     // 玩家 i 提供的词 -> 给玩家 (i+1) % N
     room.players.forEach((p, i) => {
       const prevPlayer = room.players[(i - 1 + room.players.length) % room.players.length];

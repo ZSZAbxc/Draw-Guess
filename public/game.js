@@ -341,10 +341,10 @@ function initCanvas() {
       setBrush(BRUSH_SIZES[idx]);
     });
   }
-  // 点击面板外部关闭
+  // 点击面板外部关闭（brushBtn 内部可能有子元素，用 contains 检测）
   document.addEventListener('click', (e) => {
     if (brushPanel && !brushPanel.classList.contains('hidden') &&
-        !brushPanel.contains(e.target) && e.target !== brushBtn) {
+        !brushPanel.contains(e.target) && !brushBtn.contains(e.target)) {
       brushPanel.classList.add('hidden');
     }
   });
