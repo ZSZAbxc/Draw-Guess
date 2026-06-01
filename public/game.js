@@ -748,8 +748,8 @@ function connectSocket() {
     state.config = data.config;
     // 更新玩家列表按钮和面板
     updatePlayerListUI();
-    // 如果还在入口页或加载中，切到大厅；或者房间状态已重置为大厅
-    if (state.phase === 'entry' || (data.state === 'lobby' && state.phase !== 'lobby')) {
+    // 如果还在入口页或加载中，切到大厅
+    if (state.phase === 'entry') {
       dom.loadingOverlay.classList.add('hidden');
       showPage('lobby');
     }

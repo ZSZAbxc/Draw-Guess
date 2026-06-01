@@ -719,6 +719,9 @@ function finishGame(room) {
 
   systemToast(room, '🏆 游戏结束！查看最终排名！', 5000);
 
+  // 房间状态设为大厅，允许新玩家加入
+  room.state = 'lobby';
+
   // 立即清除所有游戏数据，保留玩家列表
   room.K = 0;
   room.currentRound = 0;
