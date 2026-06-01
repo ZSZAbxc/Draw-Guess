@@ -1035,6 +1035,14 @@ io.on('connection', (socket) => {
           room._cleverWords.set(p.id, pickRandomWord(room._wordList));
         }
       });
+      // 广播最终进度
+      const finalStatus = room.players.map(p => ({
+        id: p.id, nickname: p.nickname, avatar: p.avatar,
+        done: true
+      }));
+      io.to(room.id).emit('clever_progress', {
+        submitted: room.players.length, total: room.players.length, players: finalStatus
+      });
       // 进入正式选词阶段，将灵机一动的词设为候选之一
       if (!room.wordCandidates || room.wordCandidates.size === 0) {
         room.wordCandidates = new Map();
@@ -1087,6 +1095,17 @@ io.on('connection', (socket) => {
     if (!room || room.state !== 'clever_idea') return;
 
     room._cleverWords.set(socket.id, word && word.trim() ? word.trim() : pickRandomWord(room._wordList));
+
+    // 广播提交进度
+    const cleverStatus = room.players.map(p => ({
+      id: p.id, nickname: p.nickname, avatar: p.avatar,
+      done: room._cleverWords.has(p.id)
+    }));
+    io.to(room.id).emit('clever_progress', {
+      submitted: room._cleverWords.size,
+      total: room.players.length,
+      players: cleverStatus
+    });
 
     // 检查是否全部提交
     let allDone = true;
@@ -1166,6 +1185,17 @@ io.on('connection', (socket) => {
     room.selectedWords.set(chain.startPlayerId, word);
     if (!room._wordWasPlayerSelected) room._wordWasPlayerSelected = new Map();
     room._wordWasPlayerSelected.set(chain.startPlayerId, true);
+
+    // 广播选词进度给所有玩家
+    const selectStatus = room.players.map(p => ({
+      id: p.id, nickname: p.nickname, avatar: p.avatar,
+      done: room.selectedWords.has(p.id) || room.selectedWords.has(room.chains.find(c => c.startPlayerId === p.id)?.startPlayerId)
+    }));
+    io.to(room.id).emit('word_select_progress', {
+      selected: room.selectedWords.size,
+      total: room.chains.length,
+      players: selectStatus
+    });
 
     // 检查是否所有起点都已选词
     let allSelected = true;

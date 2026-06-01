@@ -171,8 +171,9 @@ button { cursor:pointer; border:none; border-radius:10px; padding:14px 28px; fon
 .artwork-card:hover { background:#2a2a5e; }
 .artwork-card.selected { border-color:#2ecc71; background:#1a3a2e; }
 .artwork-card img {
-  width:100%; aspect-ratio:3/2; object-fit:contain;
-  background:white; border-radius:10px; border:2px solid #555;
+  width:100%; height:auto; max-height:55vh;
+  object-fit:contain; background:white;
+  border-radius:10px; border:2px solid #555;
 }
 .artwork-card .artist-name { font-size:28px; font-weight:bold; color:#eee; }
 @keyframes heartBeat { 0%{transform:scale(1)} 100%{transform:scale(1.2)} }

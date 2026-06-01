@@ -353,8 +353,8 @@ function initCanvas() {
 function resizeCanvas() {
   const wrapper = canvas.parentElement;
   if (!wrapper) return;
-  const w = Math.min(wrapper.clientWidth - 8, window.innerWidth * 0.85);
-  const h = Math.min(wrapper.clientHeight - 8, window.innerHeight * 0.7);
+  const w = Math.max(300, Math.min(wrapper.clientWidth - 8 || 0, window.innerWidth * 0.85));
+  const h = Math.max(200, Math.min(wrapper.clientHeight - 8 || 0, window.innerHeight * 0.7));
   // 只在尺寸变化时重置
   if (canvas.width !== w || canvas.height !== h) {
     const data = ctx ? ctx.getImageData(0, 0, canvas.width, canvas.height) : null;
@@ -624,9 +624,38 @@ function connectSocket() {
     }
   });
 
+    // 灵机一动进度更新
+  socket.on('clever_progress', (data) => {
+    const list = document.getElementById('clever-progress-list');
+    if (!list) return;
+    let html = '';
+    (data.players || []).forEach(p => {
+      const isMe = p.id === state.myId;
+      const status = p.done ? '🤓👆 已完成' : '🤔 思考中';
+      const color = p.done ? '#2ecc71' : '#f39c12';
+      html += `<div style="color:${color}"><span style="font-size:22px">${p.avatar || '😀'}</span> ${p.nickname}${isMe?' (你)':''} — ${status}</div>`;
+    });
+    list.innerHTML = html;
+  });
+
+  // 选词进度更新
+  socket.on('word_select_progress', (data) => {
+    const list = document.getElementById('word-select-player-list');
+    if (!list) return;
+    let html = '';
+    (data.players || []).forEach(p => {
+      const isMe = p.id === state.myId;
+      const status = p.done ? '✅ 已选择' : '🤔 思考中';
+      const color = p.done ? '#2ecc71' : '#f39c12';
+      html += `<div style="color:${color}"><span style="font-size:22px">${p.avatar || '😀'}</span> ${p.nickname}${isMe?' (你)':''} — ${status}</div>`;
+    });
+    list.innerHTML = html;
+  });
+
   // 灵机一动：接收输入提示
   socket.on('clever_idea_input', (data) => {
     dom.cleverIdeaOverlay.classList.remove('hidden');
+    document.getElementById('clever-progress-list').innerHTML = '';
     dom.cleverForPlayer.textContent = data.forPlayer;
     dom.cleverIdeaInput.value = '';
     dom.cleverTimer.textContent = '⏱ ' + data.timeout + 's';
@@ -640,8 +669,10 @@ function connectSocket() {
       if (dom.cleverIdeaOverlay.classList.contains('hidden')) return;
       const word = dom.cleverIdeaInput.value.trim();
       socket.emit('submit_clever_word', word);
-      dom.cleverIdeaOverlay.classList.add('hidden');
       clearInterval(timerInterval);
+      // 提交后隐藏输入区域，保留进度列表可见
+      const inputArea = document.getElementById('clever-input-area');
+      if (inputArea) inputArea.style.display = 'none';
     }
     dom.btnSubmitClever.onclick = submitClever;
     dom.cleverIdeaInput.onkeydown = (e) => {
@@ -764,13 +795,17 @@ function connectSocket() {
 
   // ---- 选词 ----
   socket.on('word_select', (data) => {
+    dom.cleverIdeaOverlay.classList.add('hidden');
+    const cleverInputArea = document.getElementById('clever-input-area');
+    if (cleverInputArea) cleverInputArea.style.display = '';
     state.phase = 'word_select';
     state.submitted = false;
     showWordSelect(data.candidates, data.timeout);
     startTimer(data.timeout, () => {
       // 超时自动选择第一个
       socket.emit('select_word', data.candidates[0]);
-      dom.wordSelectOverlay.classList.add('hidden');
+      const area = document.getElementById('word-select-area');
+      if (area) area.style.display = 'none';
     });
   });
 
@@ -1187,10 +1222,13 @@ function showWordSelect(candidates, timeout) {
     btn.textContent = word;
     btn.addEventListener('click', () => {
       socket.emit('select_word', word);
-      dom.wordSelectOverlay.classList.add('hidden');
+      // 隐藏选词区域，保留进度列表
+      const area = document.getElementById('word-select-area');
+      if (area) area.style.display = 'none';
     });
     dom.wordCandidates.appendChild(btn);
   });
+  document.getElementById('word-select-player-list').innerHTML = '';
   dom.wordSelectOverlay.classList.remove('hidden');
   // 实时更新倒计时和进度条
   const timerInterval = setInterval(() => {
@@ -1403,10 +1441,10 @@ function showVoteUI(data) {
       const card = document.createElement('div');
       card.className = 'artwork-card';
       card.dataset.playerId = art.playerId;
-      card.innerHTML = `
-        <img src="${art.drawing}" alt="${art.nickname}的画作">
-        <span class="artist-name">🎨 ${art.nickname} <span style="font-size:20px;color:#888">|</span> ${art.prompt || '未知'}</span>
-      `;
+      const isBlankArt = !art.drawing || art.drawing.length < 200;
+      card.innerHTML = isBlankArt
+        ? `<div style="width:100%;aspect-ratio:3/2;background:white;border-radius:10px;border:2px solid #555;display:flex;align-items:center;justify-content:center;font-size:24px;color:#ccc">🖼 未提交画作</div><span class="artist-name">🎨 ${art.nickname}</span>`
+        : `<img src="${art.drawing}" alt="${art.nickname}的画作"><span class="artist-name">🎨 ${art.nickname} <span style="font-size:20px;color:#888">|</span> ${art.prompt || '未知'}</span>`;
       card.onclick = () => {
         if (voted) return;
         voted = true;
@@ -1694,6 +1732,18 @@ function updateLobbyUI(data) {
     dom.wordlibDisplay.textContent = current;
     const cc = document.getElementById('clever-idea-checkbox');
     if (cc) cc.checked = !!data.config.cleverIdea;
+    // 更新灵机一动标签文本
+    const cleverLabelText = document.getElementById('clever-label-text');
+    if (cleverLabelText) cleverLabelText.textContent = data.config.cleverIdea ? '灵机一动已开启' : '灵机一动';
+    const hint = document.getElementById('clever-idea-hint');
+    if (hint) {
+      if (data.config.cleverIdea && !state.isOwner) {
+        hint.classList.remove('hidden');
+        hint.style.display = '';
+      } else {
+        hint.classList.add('hidden');
+      }
+    }
     const ndt = document.getElementById('ndraw-time');
     const ngt = document.getElementById('nguess-time');
     const nwl = document.getElementById('nwordlib');
