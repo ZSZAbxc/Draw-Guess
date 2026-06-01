@@ -654,6 +654,9 @@ function connectSocket() {
 
   // 灵机一动：接收输入提示
   socket.on('clever_idea_input', (data) => {
+    // 重置输入区域显示（上一局可能被隐藏）
+    const cleverInputArea = document.getElementById('clever-input-area');
+    if (cleverInputArea) cleverInputArea.style.display = '';
     dom.cleverIdeaOverlay.classList.remove('hidden');
     document.getElementById('clever-progress-list').innerHTML = '';
     dom.cleverForPlayer.textContent = data.forPlayer;
@@ -783,6 +786,11 @@ function connectSocket() {
     state.reviewChains = [];
     dom.wordSelectOverlay.classList.add('hidden');
     dom.cleverIdeaOverlay.classList.add('hidden');
+    // 重置灵机一动和选词区域显示
+    const ciArea = document.getElementById('clever-input-area');
+    if (ciArea) ciArea.style.display = '';
+    const wsArea = document.getElementById('word-select-area');
+    if (wsArea) wsArea.style.display = '';
     // 游戏开始时玩家列表按钮移到右上角
     const pbtn = document.getElementById('player-list-btn');
     if (pbtn) {
@@ -1211,6 +1219,9 @@ function connectSocket() {
 //   选词界面
 // ================================================================
 function showWordSelect(candidates, timeout) {
+  // 重置选词区域显示（上一局可能被隐藏）
+  const wordSelectArea = document.getElementById('word-select-area');
+  if (wordSelectArea) wordSelectArea.style.display = '';
   dom.wordCandidates.innerHTML = '';
   const totalTime = timeout || 20;
   dom.wordSelectTimer.textContent = '⏱ ' + totalTime + 's';
