@@ -15,6 +15,32 @@ let currentWordLib = '【简体中文】默认'; // 当前活动的词库名称
 let onlineCount = 0;
 
 // ============================================================
+// Render 防休眠：有玩家在线时每10分钟自ping，无人时自动停止
+// ============================================================
+const SELF_URL = process.env.RENDER_EXTERNAL_URL;
+let keepAliveTimer = null;
+
+function startKeepAlive() {
+  if (!SELF_URL || keepAliveTimer) return;
+  keepAliveTimer = setInterval(() => {
+    http.get(`${SELF_URL}/`, (res) => {
+      console.log(`[保活] 自 ping 成功 (${res.statusCode})`);
+    }).on('error', (err) => {
+      console.log(`[保活] 自 ping 失败: ${err.message}`);
+    });
+  }, 10 * 60 * 1000);
+  console.log('[保活] 已启动 (每 10 分钟自 ping)');
+}
+
+function stopKeepAlive() {
+  if (keepAliveTimer) {
+    clearInterval(keepAliveTimer);
+    keepAliveTimer = null;
+    console.log('[保活] 已停止 (无玩家在线)');
+  }
+}
+
+// ============================================================
 // 延迟追踪
 // ============================================================
 const socketLatency = new Map(); // socket.id -> { latency: ms, time: timestamp }
@@ -752,6 +778,7 @@ io.on('connection', (socket) => {
 
   // 广播全局在线人数
   io.emit('global_online', { count: ++onlineCount });
+  if (onlineCount === 1) startKeepAlive(); // 第一个玩家上线，启动保活
   socket.on('pong_measure', (data) => {
     const sent = data.t || 0;
     const latency = Date.now() - sent;
@@ -1436,6 +1463,7 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => {
     const oldId = socket.id;
     io.emit('global_online', { count: --onlineCount });
+    if (onlineCount === 0) stopKeepAlive(); // 最后一个玩家离开，停止保活
     console.log(`[断线] ${oldId} 已断开`);
 
     for (const [roomId, room] of rooms) {
@@ -1824,17 +1852,7 @@ server.listen(PORT, () => {
   console.log(`  📝 当前词库: ${currentWordLib} (${words.length} 词)`);
   console.log(`  📚 可用词库: ${wordLibraries.map(l=>l.name+'('+l.count+'词)').join(', ')}\n`);
 
-  // Render 防休眠：每 10 分钟自 ping 一次，防止免费层服务休眠
-  const SELF_URL = process.env.RENDER_EXTERNAL_URL;
   if (SELF_URL) {
-    const KEEP_ALIVE_MS = 10 * 60 * 1000;
-    setInterval(() => {
-      http.get(`${SELF_URL}/`, (res) => {
-        console.log(`[保活] 自 ping 成功 (${res.statusCode})`);
-      }).on('error', (err) => {
-        console.log(`[保活] 自 ping 失败: ${err.message}`);
-      });
-    }, KEEP_ALIVE_MS);
-    console.log(`  🔄 Render 保活已启用 (每 ${KEEP_ALIVE_MS / 60000} 分钟自 ping)`);
+    console.log('  🔄 Render 保活待命 (有玩家在线时自动启动)');
   }
 });
