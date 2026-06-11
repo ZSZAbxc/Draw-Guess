@@ -1823,4 +1823,18 @@ server.listen(PORT, () => {
   console.log(`  🌐 http://localhost:${PORT}`);
   console.log(`  📝 当前词库: ${currentWordLib} (${words.length} 词)`);
   console.log(`  📚 可用词库: ${wordLibraries.map(l=>l.name+'('+l.count+'词)').join(', ')}\n`);
+
+  // Render 防休眠：每 10 分钟自 ping 一次，防止免费层服务休眠
+  const SELF_URL = process.env.RENDER_EXTERNAL_URL;
+  if (SELF_URL) {
+    const KEEP_ALIVE_MS = 10 * 60 * 1000;
+    setInterval(() => {
+      http.get(`${SELF_URL}/`, (res) => {
+        console.log(`[保活] 自 ping 成功 (${res.statusCode})`);
+      }).on('error', (err) => {
+        console.log(`[保活] 自 ping 失败: ${err.message}`);
+      });
+    }, KEEP_ALIVE_MS);
+    console.log(`  🔄 Render 保活已启用 (每 ${KEEP_ALIVE_MS / 60000} 分钟自 ping)`);
+  }
 });
