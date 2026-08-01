@@ -233,7 +233,7 @@ function submitGuess() {
     showToast('请输入一个词语');
     return;
   }
-  socket.emit('submit_guess', word);
+  socket.emit('submit_guess', { word });
   state.submitted = true;
   dom.guessInput.disabled = true;
   dom.btnSubmitGuess.disabled = true;
@@ -590,7 +590,8 @@ function updateTimerDisplay() {
 let socket = null;
 
 function connectSocket() {
-  socket = io();
+  // 子路径适配：本地为 /socket.io，部署到 /draw-guess/ 下自动变为 /draw-guess/socket.io
+  socket = io({ path: new URL('socket.io', location.href).pathname });
 
   // 响应服务端 ping 测量
   socket.on('ping_measure', (data) => {
@@ -672,7 +673,7 @@ function connectSocket() {
       if (cleverSubmitted || dom.cleverIdeaOverlay.classList.contains('hidden')) return;
       cleverSubmitted = true;
       const word = dom.cleverIdeaInput.value.trim();
-      socket.emit('submit_clever_word', word);
+      socket.emit('submit_clever_word', { word });
       clearInterval(timerInterval);
       // 提交后隐藏输入区域，保留进度列表可见
       const inputArea = document.getElementById('clever-input-area');
@@ -812,7 +813,7 @@ function connectSocket() {
     // 先启动主倒计时（showWordSelect 的进度条依赖 state.timerEnd）
     startTimer(data.timeout, () => {
       // 超时自动选择第一个
-      socket.emit('select_word', data.candidates[0]);
+      socket.emit('select_word', { word: data.candidates[0] });
       const area = document.getElementById('word-select-area');
       if (area) area.style.display = 'none';
     });
@@ -941,7 +942,7 @@ function connectSocket() {
         if (!state.submitted) {
           const text = dom.guessInput.value.trim();
           const word = text || '';
-          socket.emit('submit_guess', word);
+          socket.emit('submit_guess', { word });
           state.submitted = true;
           dom.guessInput.disabled = true;
           dom.btnSubmitGuess.disabled = true;
@@ -999,7 +1000,7 @@ function connectSocket() {
     // 猜词阶段未提交则立即提交输入栏内容
     if (state.roundType === 'guess' && !state.submitted) {
       const text = dom.guessInput.value.trim();
-      socket.emit('submit_guess', text || '');
+      socket.emit('submit_guess', { word: text || '' });
       state.submitted = true;
       dom.guessInput.disabled = true;
       dom.btnSubmitGuess.disabled = true;
@@ -1244,7 +1245,7 @@ function showWordSelect(candidates, timeout) {
     btn.className = 'word-candidate-btn';
     btn.textContent = word;
     btn.addEventListener('click', () => {
-      socket.emit('select_word', word);
+      socket.emit('select_word', { word });
       // 隐藏选词区域，保留进度列表
       const area = document.getElementById('word-select-area');
       if (area) area.style.display = 'none';

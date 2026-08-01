@@ -999,10 +999,16 @@ io.on('connection', (socket) => {
 
     // 仅清除该玩家的结算标记，不改变房间状态
     if (player) player.settling = false;
-    room.reviewLog = [];
-    room.reviewStepIndex = 0;
-    if (room._disconnected) room._disconnected.clear();
-    clearRoomTimer(room);
+
+    // 仅在非进行中的阶段（大厅/结算后）重置回顾数据与计时器；
+    // 进行中（选词/作画/猜词/灵机一动/回顾投票）不触碰计时器，防止任意玩家调用导致整轮卡死
+    const inProgress = room.state !== 'lobby' && room.state !== 'finished';
+    if (!inProgress) {
+      room.reviewLog = [];
+      room.reviewStepIndex = 0;
+      if (room._disconnected) room._disconnected.clear();
+      clearRoomTimer(room);
+    }
 
     socket.emit('back_to_room_ok');
     socket.to(room.id).emit('player_returned', { nickname: nick });
@@ -1148,13 +1154,17 @@ io.on('connection', (socket) => {
         }
       }
     });
+    // 灵机一动路径此前缺少选词超时兜底：玩家不选词会导致游戏永久卡死
+    scheduleWordSelectTimeout(room);
   }
 
   // ----- 灵机一动提交 -----
-  socket.on('submit_clever_word', (word) => {
+  socket.on('submit_clever_word', (data) => {
     const room = findRoomBySocket(socket);
     if (!room || room.state !== 'clever_idea') return;
 
+    // 兼容裸字符串与 { word } 对象（约定：一律传对象）
+    const word = typeof data === 'string' ? data : (data && data.word);
     const cleaned = (typeof word === 'string' ? word : '').trim();
     // 客户端限 10 字符；超长/非法的输入按未提交处理（随机生成）
     const cleverWord = (cleaned && cleaned.length <= 20) ? cleaned : pickRandomWord(room._wordList);
@@ -1219,27 +1229,15 @@ io.on('connection', (socket) => {
     systemToast(room, '📝 起点玩家正在选词...', 2000);
 
     // 超时（使用猜词时间）
-    room.timerStart = Date.now();
-    room.timer = setTimeout(() => {
-      room.chains.forEach((chain) => {
-        if (!room.selectedWords.has(chain.startPlayerId)) {
-          const candidates = room.wordCandidates.get(chain.startPlayerId);
-          if (candidates && candidates.length > 0) {
-            room.selectedWords.set(
-              chain.startPlayerId,
-              candidates[Math.floor(Math.random() * candidates.length)]
-            );
-          }
-        }
-      });
-      startDrawingRound(room);
-    }, room.config.guessTime * 1000);
+    scheduleWordSelectTimeout(room);
   }
 
-  socket.on('select_word', (word) => {
+  socket.on('select_word', (data) => {
     const room = findRoomBySocket(socket);
     if (!room || room.state !== 'word_select') return;
 
+    // 兼容裸字符串与 { word } 对象（约定：一律传对象）
+    const word = typeof data === 'string' ? data : (data && data.word);
     if (!word) return;
 
     const chain = room.chains.find(c => c.startPlayerId === socket.id);
@@ -1286,6 +1284,27 @@ io.on('connection', (socket) => {
   function startDrawingRound(room) {
     room.submissions = new Set();
     nextStage(room);
+  }
+
+  // 选词超时兜底：未选词的起点玩家自动代选并进入作画轮（普通/灵机一动共用）
+  function scheduleWordSelectTimeout(room) {
+    clearRoomTimer(room);
+    room.timerStart = Date.now();
+    room.timer = setTimeout(() => {
+      if (room.state !== 'word_select') return;
+      room.chains.forEach((chain) => {
+        if (!room.selectedWords.has(chain.startPlayerId)) {
+          const candidates = room.wordCandidates.get(chain.startPlayerId);
+          if (candidates && candidates.length > 0) {
+            room.selectedWords.set(
+              chain.startPlayerId,
+              candidates[Math.floor(Math.random() * candidates.length)]
+            );
+          }
+        }
+      });
+      startDrawingRound(room);
+    }, room.config.guessTime * 1000);
   }
 
   // ----- 提交画作 -----
@@ -1379,8 +1398,8 @@ io.on('connection', (socket) => {
     const round = room.currentRound;
     if (round % 2 !== 1) return; // 不是猜词轮
 
-    // 规范化并校验长度（客户端限 20，服务端放宽到 50 防止绕过）
-    const raw = typeof data === 'string' ? data : '';
+    // 兼容裸字符串与 { word } 对象（约定：一律传对象），并校验长度（服务端放宽到 50 防止绕过）
+    const raw = typeof data === 'string' ? data : (data && typeof data.word === 'string' ? data.word : '');
     const guess = raw.trim();
     if (guess.length > 50) return;
 
@@ -1819,22 +1838,8 @@ io.on('connection', (socket) => {
     systemToast(room, `${nickname} 重新连接了`, 3000);
   });
 
-  // ----- 重连处理 -----
-  socket.on('reconnect_request', (data, callback) => {
-    const { roomId, previousId } = data;
-    const room = rooms.get(roomId);
-    if (!room) return callback?.({ error: '房间已不存在' });
-
-    const player = room.players.find(p => p.id === previousId);
-    if (!player) return callback?.({ error: '未找到玩家' });
-
-    player.id = socket.id;
-    player.connected = true;
-    socket.join(roomId);
-
-    callback?.({ success: true, roomData: room });
-    broadcastRoomUpdate(room);
-  });
+  // 已移除：reconnect_request 曾被任意房间成员用来顶替他人身份（含房主）。
+  // 真实重连走 reconnect_to_room（按昵称找回角色），前端不再使用该事件。
 
   // ----- 返回大厅 -----
   socket.on('back_to_lobby', () => {
