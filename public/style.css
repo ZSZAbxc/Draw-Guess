@@ -43,6 +43,15 @@ body::before {
     radial-gradient(62% 52% at 50% 100%, rgba(124, 92, 255, .24), transparent 65%);
   animation: aurora 22s ease-in-out infinite alternate;
 }
+
+/* 渐变文字降级保护：不支持 background-clip:text 时保持文字可见 */
+@supports not ((background-clip: text) or (-webkit-background-clip: text)) {
+  .title-text, #timer-display, .chat-nick, .review-artist-label, .vote-timer,
+  .result-names, .initword-display {
+    -webkit-text-fill-color: currentColor;
+    background: none;
+  }
+}
 @keyframes aurora {
   0%   { transform: translate3d(-1.5%, -1%, 0) scale(1);    filter: hue-rotate(0deg); }
   50%  { transform: translate3d(1.5%, 1.5%, 0) scale(1.07); filter: hue-rotate(16deg); }
@@ -335,7 +344,7 @@ button:disabled { opacity: .5; cursor: not-allowed; filter: grayscale(.5); }
 .draw-toolbar {
   display: flex; align-items: center; gap: 12px; padding: 10px 20px;
   background: rgba(16, 11, 34, .5); border-bottom: 1px solid var(--border);
-  flex-wrap: wrap; backdrop-filter: blur(10px);
+  flex-wrap: wrap;
 }
 #color-palette { display: flex; gap: 8px; flex-wrap: wrap; }
 #btn-brush-size {
@@ -596,7 +605,6 @@ button:disabled { opacity: .5; cursor: not-allowed; filter: grayscale(.5); }
   border-radius: 16px; display: flex; flex-direction: column; z-index: 2000;
   backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
   box-shadow: 0 16px 44px rgba(0,0,0,.5);
-  overflow: hidden;
 }
 .chat-inner { position: relative; display: flex; flex-direction: column; }
 .chat-msg-list {
@@ -623,7 +631,10 @@ button:disabled { opacity: .5; cursor: not-allowed; filter: grayscale(.5); }
   background: linear-gradient(135deg, var(--primary-2), var(--accent-2));
   -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
 }
-.chat-input-row { display: flex; border-top: 1px solid rgba(255,255,255,.1); }
+.chat-input-row {
+  display: flex; border-top: 1px solid rgba(255,255,255,.1);
+  border-radius: 0 0 16px 16px; overflow: hidden;
+}
 .chat-input-row input {
   flex: 1; padding: 14px 14px; border: none; background: transparent; color: var(--text);
   font-size: 26px;

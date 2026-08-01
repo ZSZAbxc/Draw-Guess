@@ -1509,6 +1509,9 @@ function startChatFadeCheck() {
       const fadeStart = parseInt(list.dataset.fadeStart) || 0;
       if (fadeStart > 0) {
         if (now - fadeStart >= 3000) {
+          // 最后一条消息已完全隐藏：
+          // 淡出期间若来了新消息会清除 fadeStart（历史被保留），
+          // 否则清空整个消息历史
           list.innerHTML = '';
           delete list.dataset.fadeStart;
         }
@@ -1540,23 +1543,23 @@ function addChatMessage(area, nickname, text) {
   msg.className = 'chat-msg';
   msg.innerHTML = `<span class="chat-nick">${escapeHtml(nickname)}</span> ${escapeHtml(text)}`;
   msg.dataset.time = Date.now();
+  // 新消息到达：取消正在进行的淡出，保留历史消息（不清空）
+  delete list.dataset.fadeStart;
+  list.querySelectorAll('.chat-msg').forEach(el => {
+    el.style.opacity = '1';
+    el.style.transition = '';
+  });
+
+  // 最多保留20条
+  while (list.children.length > 20) list.removeChild(list.firstChild);
+
+  // 淡入（只作用于新消息，避免被上面的重置逻辑打断）
   list.appendChild(msg);
-  // 淡入
   void msg.offsetHeight;
   msg.style.opacity = '0';
   msg.style.transition = 'opacity .3s ease';
   void msg.offsetHeight;
   msg.style.opacity = '1';
-
-  // 最多保留20条
-  while (list.children.length > 20) list.removeChild(list.firstChild);
-
-  // 重置所有现有消息的透明度（取消可能的淡出）
-  list.querySelectorAll('.chat-msg').forEach(el => {
-    el.style.opacity = '1';
-    el.style.transition = '';
-  });
-  delete list.dataset.fadeStart;
 }
 
 // 恢复聊天历史（重新进入房间 / 刷新后可见）
