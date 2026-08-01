@@ -4,6 +4,7 @@
  */
 const express = require('express');
 const http = require('http');
+const path = require('path');
 const { Server } = require('socket.io');
 const words = require('./words');
 const wordLibraries = words.libraries || [];
@@ -75,7 +76,27 @@ setInterval(() => {
   }
 }, 10000);
 
-app.use(express.static('public'));
+app.use(express.static(path.join(__dirname, 'public')));
+
+// ============================================================
+// 无人房间清理：游戏中全员掉线后保留 15 分钟等待重连，超时销毁房间
+// ============================================================
+setInterval(() => {
+  const now = Date.now();
+  for (const [roomId, room] of rooms) {
+    const connectedCount = room.players.filter(p => p.connected).length;
+    if (connectedCount === 0) {
+      if (!room._emptySince) room._emptySince = now;
+      else if (now - room._emptySince > 15 * 60 * 1000) {
+        clearRoomTimer(room);
+        rooms.delete(roomId);
+        console.log(`[清理房间] ${roomId} 已无在线玩家超过15分钟，已销毁`);
+      }
+    } else {
+      room._emptySince = null;
+    }
+  }
+}, 60 * 1000);
 
 // 每 5 秒向所有连接发送 ping 测量
 setInterval(() => {
@@ -375,7 +396,8 @@ function handleRoundTimeout(room) {
           if (!room.chainDrawings[chainIndex]) room.chainDrawings[chainIndex] = [];
           room.chainDrawings[chainIndex][chainStepIndex] = {
             word: room.chainDrawings[chainIndex][chainStepIndex]?.word || pickRandomWord(room._wordList),
-            data: blankDataUrl
+            data: blankDataUrl,
+            isBlank: true
           };
         }
       } else {
@@ -407,7 +429,8 @@ function advanceToNextRound(room) {
   nextStage(room);
 }
 
-// 生成空白画布的 base64
+// 生成空白画布的 base64（与正常画布同尺寸的 600x400 纯白 SVG，
+// 通过 isBlank 标记识别，不再依赖长度判断）
 function createBlankCanvas() {
   return 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="600" height="400" viewBox="0 0 600 400"><rect width="600" height="400" fill="#ffffff"/></svg>');
 }
@@ -672,7 +695,8 @@ function handleAccuracyVoteTimeout(room) {
         playerId: chain.steps[stepIdx].playerId,
         nickname: chain.steps[stepIdx].nickname,
         drawing: drawData.data,
-        prompt: drawData.word || ""
+        prompt: drawData.word || "",
+        isBlank: drawData.isBlank || false
       });
     }
   }
@@ -799,7 +823,9 @@ io.on('connection', (socket) => {
       }
 
       const roomId = generateRoomId();
-      const room = createRoom(roomId, socket, nickname.trim(), password, avatar);
+      // 头像只允许极短字符串（表情符号），防止注入
+      const safeAvatar = (typeof avatar === 'string' && avatar.length <= 8) ? avatar : '😀';
+      const room = createRoom(roomId, socket, nickname.trim(), password, safeAvatar);
 
       rooms.set(roomId, room);
       socket.join(roomId);
@@ -807,7 +833,7 @@ io.on('connection', (socket) => {
       console.log(`[创建房间] ${roomId} 房主: ${nickname}`);
       callback?.({ success: true, roomId });
 
-      socket.emit('create_success', { roomId, nickname: nickname.trim(), avatar: avatar || '😀' });
+      socket.emit('create_success', { roomId, nickname: nickname.trim(), avatar: safeAvatar });
       broadcastRoomUpdate(room);
     } catch (err) {
       console.error('[创建房间错误]', err);
@@ -839,6 +865,9 @@ io.on('connection', (socket) => {
         return callback?.({ error: '房间已满（最多12人）' });
       }
 
+      // 头像只允许极短字符串（表情符号），防止注入
+      const safeAvatar = (typeof avatar === 'string' && avatar.length <= 8) ? avatar : '😀';
+
       // 处理重复昵称：按加入顺序标记 (2), (3)...
       let finalNick = nickname.trim();
       const existingNicks = room.players.map(p => p.nickname);
@@ -850,7 +879,7 @@ io.on('connection', (socket) => {
       room.players.push({
         id: socket.id,
         nickname: finalNick,
-        avatar: avatar || '😀',
+        avatar: safeAvatar,
         isOwner: false,
         connected: true
       });
@@ -859,7 +888,7 @@ io.on('connection', (socket) => {
       console.log(`[加入房间] ${roomId} ${nickname}`);
 
       callback?.({ success: true, roomId, nickname: finalNick });
-      socket.emit('join_success', { roomId, nickname: finalNick, avatar: avatar || '😀' });
+      socket.emit('join_success', { roomId, nickname: finalNick, avatar: safeAvatar });
 
       broadcastRoomUpdate(room);
       io.to(room.id).emit('player_joined', {
@@ -987,6 +1016,8 @@ io.on('connection', (socket) => {
 
     const player = room.players.find(p => p.id === socket.id);
     if (!player?.isOwner) return;
+    // 防止重复点击开始导致两个游戏流程叠加
+    if (room.state !== 'lobby') return;
     // 移除离线玩家
     room.players = room.players.filter(p => p.connected);
     if (room.players.length < 2) {
@@ -1124,7 +1155,10 @@ io.on('connection', (socket) => {
     const room = findRoomBySocket(socket);
     if (!room || room.state !== 'clever_idea') return;
 
-    room._cleverWords.set(socket.id, word && word.trim() ? word.trim() : pickRandomWord(room._wordList));
+    const cleaned = (typeof word === 'string' ? word : '').trim();
+    // 客户端限 10 字符；超长/非法的输入按未提交处理（随机生成）
+    const cleverWord = (cleaned && cleaned.length <= 20) ? cleaned : pickRandomWord(room._wordList);
+    room._cleverWords.set(socket.id, cleverWord);
 
     // 广播提交进度
     const cleverStatus = room.players.map(p => ({
@@ -1210,6 +1244,9 @@ io.on('connection', (socket) => {
 
     const chain = room.chains.find(c => c.startPlayerId === socket.id);
     if (!chain) return;
+    // 只允许选择候选词之一（防止绕过词库注入任意内容）
+    const candidates = room.wordCandidates.get(socket.id);
+    if (!candidates || !candidates.includes(word)) return;
 
     room.selectedWords.set(socket.id, word);
     room.selectedWords.set(chain.startPlayerId, word);
@@ -1256,53 +1293,69 @@ io.on('connection', (socket) => {
     const room = findRoomBySocket(socket);
     if (!room) return;
 
-    // 先尝试当前轮（作画轮）
-    let round = room.currentRound;
-    let chainStepIndex = Math.floor(round / 2);
-    let chain = room.chains.find(c => {
-      const step = c.steps[round];
-      return step && step.playerId === socket.id;
-    });
-    // 如果当前轮不是作画轮，检查上一轮是否为作画轮且玩家还没提交真实画作
-    if (!chain && round > 0 && (round - 1) % 2 === 0) {
-      const prevRound = round - 1;
-      const prevIdx = Math.floor(prevRound / 2);
-      const prevChain = room.chains.find(c => {
-        const s = c.steps[prevRound];
-        return s && s.playerId === socket.id;
-      });
-      if (prevChain) {
-        const ci = room.chains.indexOf(prevChain);
-        const existing = room.chainDrawings[ci]?.[prevIdx];
-        // 仅当已有数据为空白画布（超时代填）时才覆盖
-        if (existing && existing.data && existing.data.length < 200) {
-          round = prevRound;
-          chainStepIndex = prevIdx;
-          chain = prevChain;
+    // data 是客户端传来的 base64 或 { image } 对象
+    const rawImg = typeof data === 'string' ? data : (data && data.image);
+    // 校验画作数据：必须是合法的 image data URL，且不能过大（防止注入非法内容）
+    if (typeof rawImg !== 'string' || !rawImg.startsWith('data:image/') || rawImg.length > 5 * 1024 * 1024) {
+      return;
+    }
+    const imgData = rawImg;
+
+    const round = room.currentRound;
+    const inReview = room.state === 'review';
+
+    // 定位该玩家应写入的画作槽位
+    let targetChain = null;
+    let targetChainIndex = -1;
+    let targetStepIndex = -1;
+    let isCurrentSubmission = false;
+
+    if (!inReview && round % 2 === 0) {
+      // 当前是作画轮：正常提交（每名玩家每轮恰好一个任务）
+      const chain = room.chains.find(c => c.steps[round] && c.steps[round].playerId === socket.id);
+      if (chain) {
+        targetChain = chain;
+        targetChainIndex = room.chains.indexOf(chain);
+        targetStepIndex = Math.floor(round / 2);
+        isCurrentSubmission = true;
+      }
+    }
+
+    // 补交：猜词轮/回顾阶段，从该玩家最近的作画轮往前找空白画布并覆盖
+    if (!targetChain) {
+      let r = inReview
+        ? (room.chains[0]?.steps.length || 0) - 2 // 最后一步是猜词，倒数第二步是作画
+        : round - 1;                              // 猜词轮的前一轮是作画轮
+      for (; r >= 0; r -= 2) {
+        const chain = room.chains.find(c => c.steps[r] && c.steps[r].playerId === socket.id);
+        if (!chain) continue;
+        const ci = room.chains.indexOf(chain);
+        const existing = room.chainDrawings[ci]?.[Math.floor(r / 2)];
+        // 仅当已有数据为空白画布（超时代填，isBlank 标记）时才覆盖
+        if (existing && existing.isBlank) {
+          targetChain = chain;
+          targetChainIndex = ci;
+          targetStepIndex = Math.floor(r / 2);
+          break;
         }
       }
     }
-    if (!chain) return;
-    if (!chain) return;
 
-    const chainIndex = room.chains.indexOf(chain);
-    if (chainIndex === -1) return;
-    if (!room.chainDrawings[chainIndex]) room.chainDrawings[chainIndex] = [];
-    // data 是客户端传来的 base64 或 { image } 对象
-    const imgData = typeof data === 'string' ? data : data.image;
-    const existingData = room.chainDrawings[chainIndex][chainStepIndex];
-    room.chainDrawings[chainIndex][chainStepIndex] = {
+    if (!targetChain) return;
+
+    if (!room.chainDrawings[targetChainIndex]) room.chainDrawings[targetChainIndex] = [];
+    const existingData = room.chainDrawings[targetChainIndex][targetStepIndex];
+    room.chainDrawings[targetChainIndex][targetStepIndex] = {
       word: existingData?.word || pickRandomWord(room._wordList),
       data: imgData
     };
 
-    // 补交上一轮的画作
-    if (round < room.currentRound) {
-      // 如果正处于回顾阶段且该画作已被展示过，推送更新
+    // 补交路径（猜词轮/回顾阶段）：不计数，回顾阶段则推送画作更新
+    if (!isCurrentSubmission) {
       if (room.state === 'review') {
         io.to(room.id).emit('review_drawing_update', {
-          chainIndex,
-          stepIndex: chainStepIndex,
+          chainIndex: targetChainIndex,
+          stepIndex: targetStepIndex,
           drawing: imgData
         });
       }
@@ -1326,6 +1379,11 @@ io.on('connection', (socket) => {
     const round = room.currentRound;
     if (round % 2 !== 1) return; // 不是猜词轮
 
+    // 规范化并校验长度（客户端限 20，服务端放宽到 50 防止绕过）
+    const raw = typeof data === 'string' ? data : '';
+    const guess = raw.trim();
+    if (guess.length > 50) return;
+
     const chainStepIndex = Math.floor((round - 1) / 2);
     const chain = room.chains.find(c => {
       const step = c.steps[round];
@@ -1336,9 +1394,9 @@ io.on('connection', (socket) => {
     const chainIndex = room.chains.indexOf(chain);
     if (!room.chainGuesses[chainIndex]) room.chainGuesses[chainIndex] = [];
     // 超时代选后再收到玩家真实输入则覆盖（仅玩家有内容时覆盖）
-    if (data && data.trim() !== '' && room.chainGuesses[chainIndex][chainStepIndex]) {
+    if (guess !== '' && room.chainGuesses[chainIndex][chainStepIndex]) {
       room.chainGuesses[chainIndex][chainStepIndex] = {
-        word: data, playerId: socket.id,
+        word: guess, playerId: socket.id,
         nickname: room.players.find(p => p.id === socket.id)?.nickname || '未知',
         isSystemGenerated: false, isTimeout: false
       };
@@ -1350,9 +1408,9 @@ io.on('connection', (socket) => {
     if (room.chainGuesses[chainIndex] && room.chainGuesses[chainIndex][chainStepIndex]) return;
     if (!room.chainGuesses[chainIndex]) room.chainGuesses[chainIndex] = [];
     // data 是客户端传来的猜测词语字符串（空字符串则从词库随机选）
-    if (!data || data.trim() === '') data = pickRandomWord(room._wordList);
+    const finalGuess = guess === '' ? pickRandomWord(room._wordList) : guess;
     room.chainGuesses[chainIndex][chainStepIndex] = {
-      word: data,
+      word: finalGuess,
       playerId: socket.id,
       nickname: room.players.find(p => p.id === socket.id)?.nickname || '未知',
       isSystemGenerated: false,
@@ -1735,7 +1793,8 @@ io.on('connection', (socket) => {
               playerId: chain.steps[si].playerId,
               nickname: chain.steps[si].nickname,
               drawing: dd.data,
-              prompt: dd.word || ''
+              prompt: dd.word || '',
+              isBlank: dd.isBlank || false
             });
           }
           socket.emit('vote_request', {
@@ -1807,7 +1866,11 @@ io.on('connection', (socket) => {
     // 清除离开者的结算标记即可，不影响其他玩家
     clearRoomTimer(room);
     broadcastRoomUpdate(room);
-    systemToast(room, `${player.nickname} 离开了房间，${room.players.find(p => p.isOwner)?.nickname || '?'} 成为新房主`, 3000);
+    const newOwner = room.players.find(p => p.isOwner);
+    const leaveMsg = newOwner
+      ? `${player.nickname} 离开了房间，${newOwner.nickname} 成为新房主`
+      : `${player.nickname} 离开了房间`;
+    systemToast(room, leaveMsg, 3000);
   });
 });
 

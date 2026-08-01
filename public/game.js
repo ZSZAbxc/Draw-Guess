@@ -46,7 +46,6 @@ dom.btnCreateRoom      = $('btn-create-room');
 dom.btnJoinRoom        = $('btn-join-room');
 dom.entryJoinFields    = $('entry-join-fields');
 dom.entryRoomId        = $('entry-room-id');
-dom.entryPassword      = $('entry-password');
 dom.entryError         = $('entry-error');
 dom.btnJoinConfirm     = $('btn-join-confirm');
 dom.btnJoinBack        = $('btn-join-back');
@@ -152,12 +151,11 @@ function showPage(name) {
   }
   const panel = document.getElementById('player-list-panel');
   if (panel) panel.classList.add('hidden');
-  // 入口页隐藏聊天框，其他页面显示
-  const showChat = name !== 'entry';
-  ['lobby-chat','game-chat'].forEach(id => {
-    const el = $(id);
-    if (el) el.classList.toggle('hidden', !showChat);
-  });
+  // 聊天框按页面显示：大厅用 lobby-chat，游戏/回顾/结算用 game-chat，入口都不显示
+  const lobbyChat = $('lobby-chat');
+  const gameChat = $('game-chat');
+  if (lobbyChat) lobbyChat.classList.toggle('hidden', name !== 'lobby');
+  if (gameChat) gameChat.classList.toggle('hidden', !['game','review','result'].includes(name));
   state.phase = name;
 }
 
@@ -609,7 +607,8 @@ function connectSocket() {
     if (state._reviewQueue.length === 0) { state._reviewTimer = null; return; }
     const data = state._reviewQueue.shift();
     showReviewStep(data);
-    state._reviewTimer = setTimeout(processReviewQueue, 4000);
+    // 与服务端每步 6 秒的节奏对齐，避免步骤间出现空白
+    state._reviewTimer = setTimeout(processReviewQueue, 6000);
   }
 
   // 回顾阶段画作补交更新
@@ -633,7 +632,7 @@ function connectSocket() {
       const isMe = p.id === state.myId;
       const status = p.done ? '🤓👆 已完成' : '🤔 思考中';
       const color = p.done ? '#2ecc71' : '#f39c12';
-      html += `<div style="color:${color}"><span style="font-size:22px">${p.avatar || '😀'}</span> ${p.nickname}${isMe?' (你)':''} — ${status}</div>`;
+      html += `<div style="color:${color}"><span style="font-size:22px">${escapeHtml(p.avatar || '😀')}</span> ${escapeHtml(p.nickname)}${isMe?' (你)':''} — ${status}</div>`;
     });
     list.innerHTML = html;
   });
@@ -647,7 +646,7 @@ function connectSocket() {
       const isMe = p.id === state.myId;
       const status = p.done ? '✅ 已选择' : '🤔 思考中';
       const color = p.done ? '#2ecc71' : '#f39c12';
-      html += `<div style="color:${color}"><span style="font-size:22px">${p.avatar || '😀'}</span> ${p.nickname}${isMe?' (你)':''} — ${status}</div>`;
+      html += `<div style="color:${color}"><span style="font-size:22px">${escapeHtml(p.avatar || '😀')}</span> ${escapeHtml(p.nickname)}${isMe?' (你)':''} — ${status}</div>`;
     });
     list.innerHTML = html;
   });
@@ -668,8 +667,10 @@ function connectSocket() {
       if (remaining <= 0) { clearInterval(timerInterval); dom.cleverTimer.textContent = '⏱ 0s'; }
       else { dom.cleverTimer.textContent = '⏱ ' + remaining + 's'; }
     }, 1000);
+    let cleverSubmitted = false;
     function submitClever() {
-      if (dom.cleverIdeaOverlay.classList.contains('hidden')) return;
+      if (cleverSubmitted || dom.cleverIdeaOverlay.classList.contains('hidden')) return;
+      cleverSubmitted = true;
       const word = dom.cleverIdeaInput.value.trim();
       socket.emit('submit_clever_word', word);
       clearInterval(timerInterval);
@@ -808,13 +809,14 @@ function connectSocket() {
     if (cleverInputArea) cleverInputArea.style.display = '';
     state.phase = 'word_select';
     state.submitted = false;
-    showWordSelect(data.candidates, data.timeout);
+    // 先启动主倒计时（showWordSelect 的进度条依赖 state.timerEnd）
     startTimer(data.timeout, () => {
       // 超时自动选择第一个
       socket.emit('select_word', data.candidates[0]);
       const area = document.getElementById('word-select-area');
       if (area) area.style.display = 'none';
     });
+    showWordSelect(data.candidates, data.timeout);
   });
 
   // ---- 轮次开始 ----
@@ -977,7 +979,7 @@ function connectSocket() {
           else if (done) { status = '已完成'; color = '#2ecc71'; }
           else { status = state.roundType === 'guess' ? '思考中' : '作画中'; color = '#f39c12'; }
           const lat2 = p.connected === false ? '' : latencyHtml(p.latency);
-          html += `<div style="color:${color}"><span style="font-size:20px;margin-right:4px">${av}</span>${p.nickname}${lat2} — ${status}</div>`;
+          html += `<div style="color:${color}"><span style="font-size:20px;margin-right:4px">${escapeHtml(av)}</span>${escapeHtml(p.nickname)}${lat2} — ${status}</div>`;
         });
         list.innerHTML = html;
         modal.classList.remove('hidden');
@@ -1054,7 +1056,7 @@ function connectSocket() {
         else if (vs.vote === 'incorrect') { statusText = '❌ 差点没缓过来'; statusColor = '#ff4444'; }
         else { statusText = '🤔 思考中'; statusColor = '#f39c12'; }
         const lat4 = latencyHtml(vs.latency);
-        row.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><span><span style="font-size:20px;margin-right:4px">${vs.avatar || '😀'}</span><span style="color:${isMe?'#e94560':'#ccc'}">${isMe?' (你)':''} ${vs.nickname}</span>${lat4}</span><span style="color:${statusColor};white-space:nowrap">${statusText}</span></div>`;
+        row.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><span><span style="font-size:20px;margin-right:4px">${escapeHtml(vs.avatar || '😀')}</span><span style="color:${isMe?'#e94560':'#ccc'}">${isMe?' (你)':''} ${escapeHtml(vs.nickname)}</span>${lat4}</span><span style="color:${statusColor};white-space:nowrap">${statusText}</span></div>`;
       });
     }
     // 画作投票：所有人同步显示爱心标记 + 投票者名字
@@ -1103,7 +1105,17 @@ function connectSocket() {
     showPage('result');
     dom.resultA.textContent = data.titles.accuracyBest.length > 0 ? data.titles.accuracyBest.join('、') : '无';
     dom.resultB.textContent = data.titles.artworkBest.length > 0 ? data.titles.artworkBest.join('、') : '无';
-    dom.resultScores.textContent = `总分详情已记录`;
+    // 展示每位玩家的得分（scoreA/scoreB 为 {昵称: 分数}）
+    const scoreA = data.scoreA || {};
+    const scoreB = data.scoreB || {};
+    const allNames = [...new Set([...Object.keys(scoreA), ...Object.keys(scoreB)])];
+    if (allNames.length > 0) {
+      dom.resultScores.textContent = allNames
+        .map(n => `${n}：猜词 ${scoreA[n] || 0} 分 · 画作 ${scoreB[n] || 0} 分`)
+        .join('　');
+    } else {
+      dom.resultScores.textContent = '总分详情已记录';
+    }
     const status = document.getElementById('result-status');
     const totalPlayers = state.players.length;
     if (status) status.textContent = `📋 游戏已结束（${totalPlayers}人），点击"返回房间"继续`;
@@ -1289,7 +1301,7 @@ function showReviewStep(data) {
   dom.reviewTextArea.innerHTML = '';
 
   if (data.type === 'chain_intro') {
-    dom.reviewTextArea.innerHTML = `由 <strong>${info.startPlayer}</strong> 发起<br><span style="font-size:20px;color:#aaa">初始词：${info.initWord || '（未知）'}</span>`;
+    dom.reviewTextArea.innerHTML = `由 <strong>${escapeHtml(info.startPlayer)}</strong> 发起<br><span style="font-size:20px;color:#aaa">初始词：${escapeHtml(info.initWord || '（未知）')}</span>`;
     dom.reviewImage.classList.add('hidden');
     const label = document.getElementById('review-artist-label');
     if (label) label.textContent = '';
@@ -1312,7 +1324,7 @@ function showReviewStep(data) {
 
     let indicator = '';
     // 通过 info.player 获取当前步骤的玩家名
-    const curPlayer = info.player || '';
+    const curPlayer = escapeHtml(info.player || '');
     if (isDraw && chainStepIdx === 0) {
       indicator = `✏️ ${curPlayer}画(当前)→💬猜`;
     } else if (isGuess && isLast) {
@@ -1341,17 +1353,17 @@ function showReviewStep(data) {
   // else: 猜词步骤—保留上一张画和作者标签，不碰
 
   if (data.type === 'init_word_and_draw') {
-    dom.reviewTextArea.innerHTML = `初始词：<strong>${info.word}</strong>`;
+    dom.reviewTextArea.innerHTML = `初始词：<strong>${escapeHtml(info.word)}</strong>`;
   } else if (data.type === 'guess_normal') {
-    dom.reviewTextArea.innerHTML = `${info.player} 猜：<strong>${info.word}</strong>`;
+    dom.reviewTextArea.innerHTML = `${escapeHtml(info.player)} 猜：<strong>${escapeHtml(info.word)}</strong>`;
   } else if (data.type === 'guess_timeout') {
-    dom.reviewTextArea.innerHTML = `${info.player} 什么也没猜出来，新的词语：<strong>${info.word}</strong>（系统生成）`;
+    dom.reviewTextArea.innerHTML = `${escapeHtml(info.player)} 什么也没猜出来，新的词语：<strong>${escapeHtml(info.word)}</strong>（系统生成）`;
   } else if (data.type === 'draw_step' || data.type === 'final_draw') {
-    dom.reviewTextArea.innerHTML = `词语：<strong>${info.word}</strong>`;
+    dom.reviewTextArea.innerHTML = `词语：<strong>${escapeHtml(info.word)}</strong>`;
   } else if (data.type === 'final_guess') {
-    let html = `${info.player} 最终猜词：<strong>${info.word}</strong>`;
+    let html = `${escapeHtml(info.player)} 最终猜词：<strong>${escapeHtml(info.word)}</strong>`;
     if (info.isSystemGenerated) {
-      html = `${info.player} 什么也没猜出来，新的词语：<strong>${info.word}</strong>（系统生成）`;
+      html = `${escapeHtml(info.player)} 什么也没猜出来，新的词语：<strong>${escapeHtml(info.word)}</strong>（系统生成）`;
     }
     dom.reviewTextArea.innerHTML = html;
   }
@@ -1372,7 +1384,7 @@ function showVoteUI(data) {
     // 初始词和最终猜词
     const p = document.createElement('p');
     p.style.marginBottom = '12px';
-    p.innerHTML = `初始词：<strong>${info.initWord}</strong> &nbsp;→&nbsp; 最终猜词：<strong>${info.finalGuess}</strong>`;
+    p.innerHTML = `初始词：<strong>${escapeHtml(info.initWord)}</strong> &nbsp;→&nbsp; 最终猜词：<strong>${escapeHtml(info.finalGuess)}</strong>`;
     dom.voteBody.appendChild(p);
     // 玩家列表
     const listDiv = document.createElement('div');
@@ -1386,7 +1398,7 @@ function showVoteUI(data) {
       const isMe = pl.id === state.myId;
       const av = pl.avatar || '😀';
       const lat3 = pl.connected === false ? '' : latencyHtml(pl.latency);
-      row.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><span><span style="font-size:20px;margin-right:4px">${av}</span><span style="color:${isMe?'#e94560':'#ccc'}">${isMe?' (你)':''} ${pl.nickname}</span>${lat3}</span><span style="color:#f39c12;white-space:nowrap">🤔 思考中</span></div>`;
+      row.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><span><span style="font-size:20px;margin-right:4px">${escapeHtml(av)}</span><span style="color:${isMe?'#e94560':'#ccc'}">${isMe?' (你)':''} ${escapeHtml(pl.nickname)}</span>${lat3}</span><span style="color:#f39c12;white-space:nowrap">🤔 思考中</span></div>`;
       listDiv.appendChild(row);
     });
     dom.voteBody.appendChild(listDiv);
@@ -1452,10 +1464,10 @@ function showVoteUI(data) {
       const card = document.createElement('div');
       card.className = 'artwork-card';
       card.dataset.playerId = art.playerId;
-      const isBlankArt = !art.drawing || art.drawing.length < 200;
+      const isBlankArt = !art.drawing || art.isBlank;
       card.innerHTML = isBlankArt
-        ? `<div style="width:100%;aspect-ratio:3/2;background:white;border-radius:10px;border:2px solid #555;display:flex;align-items:center;justify-content:center;font-size:24px;color:#ccc">🖼 未提交画作</div><span class="artist-name">🎨 ${art.nickname}</span>`
-        : `<img src="${art.drawing}" alt="${art.nickname}的画作"><span class="artist-name">🎨 ${art.nickname} <span style="font-size:20px;color:#888">|</span> ${art.prompt || '未知'}</span>`;
+        ? `<div style="width:100%;aspect-ratio:3/2;background:white;border-radius:10px;border:2px solid #555;display:flex;align-items:center;justify-content:center;font-size:24px;color:#ccc">🖼 未提交画作</div><span class="artist-name">🎨 ${escapeHtml(art.nickname)}</span>`
+        : `<img src="${escapeHtml(art.drawing)}" alt="${escapeHtml(art.nickname)}的画作"><span class="artist-name">🎨 ${escapeHtml(art.nickname)} <span style="font-size:20px;color:#888">|</span> ${escapeHtml(art.prompt || '未知')}</span>`;
       card.onclick = () => {
         if (voted) return;
         voted = true;
@@ -1545,6 +1557,16 @@ function addChatMessage(area, nickname, text) {
     el.style.transition = '';
   });
   delete list.dataset.fadeStart;
+}
+
+// 恢复聊天历史（重新进入房间 / 刷新后可见）
+function renderChatHistory(messages) {
+  if (dom.gameMsgList) dom.gameMsgList.innerHTML = '';
+  if (dom.lobbyMsgList) dom.lobbyMsgList.innerHTML = '';
+  (messages || []).forEach(m => {
+    addChatMessage('game', m.nickname, m.text);
+    addChatMessage('lobby', m.nickname, m.text);
+  });
 }
 
 // 页面加载后启动检查
@@ -1719,7 +1741,7 @@ function updateLobbyUI(data) {
   data.players.forEach(p => {
     const li = document.createElement('li');
     const lat = p.connected ? latencyHtml(p.latency) : '';
-    li.innerHTML = `<span style="font-size:24px;margin-right:6px">${p.avatar || '😀'}</span> ${p.nickname}${lat}`;
+    li.innerHTML = `<span style="font-size:24px;margin-right:6px">${escapeHtml(p.avatar || '😀')}</span> ${escapeHtml(p.nickname)}${lat}`;
     if (p.isOwner) {
       li.innerHTML += ' <span class="owner-badge">房主</span>';
     }
@@ -1781,6 +1803,8 @@ function updateLobbyUI(data) {
   dom.settingsPanel.classList.remove('hidden');
   document.querySelectorAll('.owner-only-control').forEach(el => el.style.display = state.isOwner ? '' : 'none');
   document.querySelectorAll('.nonowner-text').forEach(el => el.style.display = state.isOwner ? 'none' : '');
+  // 恢复聊天历史（重新进入房间 / 刷新后可见）
+  if (data.chat) renderChatHistory(data.chat);
   if (state.isOwner) {
     dom.btnStartGame.classList.remove('hidden');
     dom.lobbyWaiting.classList.add('hidden');
@@ -1812,8 +1836,8 @@ function renderPlayerListPanel() {
     const nameColor = isMe ? '#e94560' : (p.connected ? '#eee' : '#888');
     const av = p.avatar || '😀';
     html += `<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;${isMe?'background:rgba(233,69,96,0.15)':''}">
-      <span style="font-size:28px">${av}</span>
-      <span style="color:${nameColor};font-size:16px;font-weight:${isMe?'bold':'normal'}">${p.nickname}${isMe?' (你)':''}</span>
+      <span style="font-size:28px">${escapeHtml(av)}</span>
+      <span style="color:${nameColor};font-size:16px;font-weight:${isMe?'bold':'normal'}">${escapeHtml(p.nickname)}${isMe?' (你)':''}</span>
       <span style="margin-left:auto">${lat}</span>
     </div>`;
   });

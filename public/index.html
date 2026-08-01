@@ -11,18 +11,18 @@
 <!-- ==================== 入口页 ==================== -->
 <div id="page-entry">
   <div class="entry-container">
-    <h1 class="game-title">🎨 传画接龙</h1>
+    <h1 class="game-title"><span class="title-emoji">🎨</span><span class="title-text">传画接龙</span></h1>
     <p class="subtitle">绘画猜词接力派对游戏</p>
     <p id="global-latency" style="position:fixed;top:10px;left:10px;font-size:14px;z-index:3000;margin:0;display:none"></p>
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;position:relative">
+    <div class="entry-name-row">
       <div style="position:relative;display:inline-block">
-        <span id="avatar-hint" style="position:absolute;left:50%;transform:translateX(-50%);bottom:100%;margin-bottom:2px;font-size:11px;color:#888;white-space:nowrap">点击切换头像</span>
-        <div id="avatar-trigger" style="font-size:40px;cursor:pointer;width:50px;height:50px;display:flex;align-items:center;justify-content:center;background:#2a2a3e;border-radius:10px;border:2px solid #444;transition:border-color .15s" title="点击选择头像">😀</div>
+        <span id="avatar-hint" class="avatar-hint">点击切换头像</span>
+        <div id="avatar-trigger" class="avatar-trigger" title="点击选择头像">😀</div>
       </div>
-      <input type="text" id="entry-nickname" placeholder="输入你的昵称" maxlength="10" autocomplete="off" style="flex:1;margin-bottom:0">
+      <input type="text" id="entry-nickname" placeholder="输入你的昵称" maxlength="10" autocomplete="off">
     </div>
-    <div id="avatar-panel" class="hidden" style="margin-bottom:12px;padding:10px;background:#2a2a3e;border-radius:10px;border:1px solid #555;max-height:180px;overflow-y:auto">
-      <div id="avatar-grid" style="display:grid;grid-template-columns:repeat(8,1fr);gap:6px"></div>
+    <div id="avatar-panel" class="hidden avatar-panel">
+      <div id="avatar-grid" class="avatar-grid"></div>
     </div>
     <div class="entry-buttons">
       <button id="btn-create-room">创建房间</button>
@@ -43,10 +43,10 @@
 <!-- ==================== 大厅 ==================== -->
 <div id="page-lobby" class="hidden">
   <div class="lobby-header">
-    <span id="lobby-room-id-display"></span>
-    <button id="btn-copy-roomid" style="background:#3498db;color:white;padding:6px 16px;font-size:16px;border-radius:8px;cursor:pointer;border:none;margin:0 10px">📋 复制</button>
-    <span id="lobby-player-count"></span>
-    <button id="btn-leave-room" style="background:#e74c3c;color:white;padding:4px 12px;font-size:14px;border-radius:6px;margin-left:auto">🚪 退出房间</button>
+    <span id="lobby-room-id-display" class="room-id-chip"></span>
+    <button id="btn-copy-roomid" class="btn-copy">📋 复制</button>
+    <span id="lobby-player-count" class="player-count-badge"></span>
+    <button id="btn-leave-room" class="btn-leave">🚪 退出房间</button>
   </div>
   <div class="lobby-body">
     <div class="lobby-left">
@@ -88,7 +88,6 @@
       <div id="lobby-waiting" class="hidden"><em>等待房主开始游戏...</em></div>
     </div>
   </div>
-  </div>
 </div>
 
 <!-- ==================== 聊天（全局固定） ==================== -->
@@ -114,7 +113,7 @@
 
 <!-- ==================== 游戏界面 ==================== -->
 <div id="page-game" class="hidden">
-  <div id="player-list-btn" style="position:fixed;background:rgba(0,0,0,0.4);color:#eee;padding:6px 14px;border-radius:8px;font-size:15px;cursor:grab;z-index:2000;display:none;backdrop-filter:blur(4px);border:1px solid rgba(255,255,255,0.1);user-select:none">📋 玩家列表</div>
+<div id="player-list-btn" style="display:none">📋 玩家列表</div>
 <div id="player-list-panel" class="hidden" style="position:fixed;background:rgba(0,0,0,0.7);border-radius:10px;padding:12px;z-index:2001;min-width:200px;backdrop-filter:blur(4px);border:1px solid rgba(255,255,255,0.1)"></div>
 <div id="game-header">
     <span id="round-info"></span>
@@ -167,9 +166,9 @@
         <h2>🎯 选择初始词</h2>
         <p>为你的链条选择一个词开始！</p>
         <div id="word-candidates"></div>
-      <div id="word-select-timer" style="font-size:22px;color:#e94560;margin-top:8px"></div>
-      <div style="width:100%;height:8px;background:#333;border-radius:4px;margin-top:8px;overflow:hidden">
-        <div id="word-select-progress" style="width:100%;height:100%;background:#e94560;border-radius:4px;transition:transform .3s linear;transform-origin:center"></div>
+      <div id="word-select-timer" class="timer-text"></div>
+      <div class="progress-track">
+        <div id="word-select-progress" class="progress-fill"></div>
       </div>
       </div>
       <div id="word-select-player-list" style="margin-top:10px;font-size:18px;line-height:2"></div>
@@ -212,7 +211,7 @@
     <div id="review-chain-title"></div>
     <div id="review-display">
       <div id="review-image-area">
-        <div id="review-artist-label" style="font-size:28px;font-weight:bold;color:#e94560;margin-bottom:8px;min-height:40px"></div>
+        <div id="review-artist-label" class="review-artist-label"></div>
         <img id="review-image" src="" onclick="openImageModal(this.src)">
       </div>
       <div id="review-text-area"></div>
@@ -229,8 +228,8 @@
       <div id="vote-body"></div>
       <div id="vote-timer" class="vote-timer"></div>
       <div id="vote-progress"></div>
-      <div style="width:100%;height:8px;background:#333;border-radius:4px;margin-top:12px;overflow:hidden">
-        <div id="vote-progress-bar" style="width:100%;height:100%;background:#e94560;border-radius:4px;transition:transform .3s linear;transform-origin:center;transform:scaleX(1)"></div>
+      <div class="progress-track" style="margin-top:12px">
+        <div id="vote-progress-bar" class="progress-fill"></div>
       </div>
     </div>
   </div>
@@ -239,7 +238,7 @@
 <!-- ==================== 结算页 ==================== -->
 <div id="page-result" class="hidden">
   <div class="result-container">
-    <h1>🏆 游戏结束！</h1>
+    <h1><span class="trophy">🏆</span> 游戏结束！</h1>
     <div class="result-section">
       <h2>👁️ 一眼丁真（最佳猜手）</h2>
       <div id="result-a" class="result-names"></div>
@@ -252,7 +251,7 @@
     <p id="result-status" style="color:#f39c12;font-size:22px;margin:12px 0">📋 游戏已结束，可返回房间开始新游戏</p>
     <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
       <button id="btn-back-to-room" class="btn-primary btn-large">🔁 返回房间</button>
-      <button id="btn-back-to-lobby" class="btn-primary btn-large" style="background:#555">🔙 返回大厅</button>
+      <button id="btn-back-to-lobby" class="btn-primary btn-large btn-ghost">🔙 返回大厅</button>
     </div>
   </div>
 </div>
@@ -267,16 +266,16 @@
 <div id="initword-overlay" class="hidden overlay" style="z-index:9999">
   <div class="modal" style="max-width:500px;padding:40px">
     <div style="font-size:28px;margin-bottom:10px">🎯 你的初始词</div>
-    <div id="initword-display" style="font-size:72px;font-weight:bold;color:#e94560;margin:20px 0"></div>
+    <div id="initword-display" class="initword-display"></div>
     <div id="initword-note" style="font-size:16px;color:#888"></div>
   </div>
 </div>
 
 <!-- ==================== 断开提示 ==================== -->
 <div id="disconnect-banner" class="hidden">⚠️ 网络连接已断开，正在重连...</div>
-<div id="reconnect-banner" class="hidden" style="position:fixed;top:40px;left:0;right:0;z-index:9999;background:#3498db;color:white;text-align:center;padding:10px;font-size:18px;font-weight:bold;"></div>
+<div id="reconnect-banner" class="hidden reconnect-banner"></div>
 
-<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+<script src="/socket.io/socket.io.js"></script>
 <script src="game.js?v=4"></script>
 </body>
 </html>

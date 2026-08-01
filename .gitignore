@@ -1,0 +1,16 @@
+# 依赖
+node_modules/
+
+# Codex / 开发工具产物
+.codegraph/
+.reasonix/
+.agents/
+
+# 日志与系统文件
+*.log
+Thumbs.db
+.DS_Store
+
+# 本地环境变量
+.env
+.env.*
