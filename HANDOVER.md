@@ -33,6 +33,7 @@
 
 ## 2. 部署记录（104.214.172.72）
 
+- **V2.4 部署（2026-08-02）**：SFTP 上传 `server.js`、`public/game.js`、`public/index.html` 至 `/opt/draw-guess`（上传前备份为 `server.js.bak-20260802-040245` 等），`systemctl restart draw-guess` 后服务 active；本地 8080 与 nginx `/draw-guess/` 均 200；生产 E2E 冒烟 8/8 通过（建房/词库7个/加人/选词/作画/猜词/回顾/reconnect_request 已失效）。本地 sha1 与服务器文件一致。
 - 访问：`http://104.214.172.72/draw-guess/`
 - 服务：`draw-guess.service`（systemd，`PORT=8080`，WorkingDirectory `/opt/draw-guess`，node server.js，Restart=always）
 - nginx：当前生效站点 `/etc/nginx/sites-available/games`（symlink 自 sites-enabled），内含 `location /draw-guess/` 反代到 `http://127.0.0.1:8080/`（含 Upgrade/Connection 头，支持 WebSocket）；备份 `games.bak`
