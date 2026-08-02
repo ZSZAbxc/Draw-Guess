@@ -1774,17 +1774,10 @@ io.on('connection', (socket) => {
       if (socket.id === yd.drawerId) return; // 画手不能评价自己
       if (room.votesAccuracy.has(socket.id)) return; // 已投票
       room.votesAccuracy.set(socket.id, vote);
-      const voterStatus = room.players.map(p => ({
-        playerId: p.id,
-        nickname: p.nickname,
-        avatar: p.avatar || '😀',
-        latency: getLatency(p.id),
-        vote: room.votesAccuracy.get(p.id) || null
-      }));
+      // 匿名投票：不广播谁投了什么，只广播票数进度
       io.to(room.id).emit('vote_progress', {
         voted: room.votesAccuracy.size,
-        total: room.players.length - 1, // 画手不参与投票
-        voterStatus
+        total: room.players.length - 1 // 画手不参与投票
       });
       // 除画手外全员投完且剩余 >5s 则缩短为 5s
       const elapsed = Date.now() - (room.timerStart || Date.now());

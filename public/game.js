@@ -1937,26 +1937,29 @@ function showVoteUI(data) {
     }
     dom.voteBody.appendChild(p);
     // 玩家列表
-    const listDiv = document.createElement('div');
-    listDiv.id = 'accuracy-voter-list';
-    listDiv.style.cssText = 'text-align:left;font-size:22px;line-height:2.2;margin:8px 0 16px;padding:10px;background:#1a1a3e;border-radius:10px;box-sizing:border-box';
-    // 初始渲染：全部显示思考中（优先使用服务端下发的玩家列表，避免重连时 state.players 为空）
-    const playerList = info.players && info.players.length > 0 ? info.players : state.players;
-    playerList.forEach(pl => {
-      const row = document.createElement('div');
-      row.id = 'voter-row-' + pl.id;
-      const isMe = pl.id === state.myId;
-      const isDrawerRow = isYdig && info.drawerId === pl.id;
-      if (isDrawerRow) row.dataset.isDrawer = '1';
-      const av = pl.avatar || '😀';
-      const lat3 = pl.connected === false ? '' : latencyHtml(pl.latency);
-      const statusHtml = isDrawerRow
-        ? '<span style="color:#e94560;white-space:nowrap">🎨 画手（不投票）</span>'
-        : '<span style="color:#f39c12;white-space:nowrap">🤔 思考中</span>';
-      row.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><span><span style="font-size:20px;margin-right:4px">${escapeHtml(av)}</span><span style="color:${isMe?'#e94560':'#ccc'}">${isMe?' (你)':''} ${escapeHtml(pl.nickname)}</span>${lat3}</span>${statusHtml}</div>`;
-      listDiv.appendChild(row);
-    });
-    dom.voteBody.appendChild(listDiv);
+    if (isYdig) {
+      // 匿名投票：不显示各玩家投票状态，仅提示匿名
+      const anon = document.createElement('p');
+      anon.style.cssText = 'text-align:left;font-size:18px;color:#888;margin:8px 0 16px;line-height:1.6;';
+      anon.textContent = '🔒 匿名投票：不会公开谁投了什么，请凭本心评价';
+      dom.voteBody.appendChild(anon);
+    } else {
+      const listDiv = document.createElement('div');
+      listDiv.id = 'accuracy-voter-list';
+      listDiv.style.cssText = 'text-align:left;font-size:22px;line-height:2.2;margin:8px 0 16px;padding:10px;background:#1a1a3e;border-radius:10px;box-sizing:border-box';
+      // 初始渲染：全部显示思考中（优先使用服务端下发的玩家列表，避免重连时 state.players 为空）
+      const playerList = info.players && info.players.length > 0 ? info.players : state.players;
+      playerList.forEach(pl => {
+        const row = document.createElement('div');
+        row.id = 'voter-row-' + pl.id;
+        const isMe = pl.id === state.myId;
+        const av = pl.avatar || '😀';
+        const lat3 = pl.connected === false ? '' : latencyHtml(pl.latency);
+        row.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><span><span style="font-size:20px;margin-right:4px">${escapeHtml(av)}</span><span style="color:${isMe?'#e94560':'#ccc'}">${isMe?' (你)':''} ${escapeHtml(pl.nickname)}</span>${lat3}</span><span style="color:#f39c12;white-space:nowrap">🤔 思考中</span></div>`;
+        listDiv.appendChild(row);
+      });
+      dom.voteBody.appendChild(listDiv);
+    }
 
     // 投票按钮
     const btnDiv = document.createElement('div');
