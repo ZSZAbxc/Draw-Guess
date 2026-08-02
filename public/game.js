@@ -2008,13 +2008,8 @@ function showVoteUI(data) {
       dom.voteBody.appendChild(art);
     }
     // 玩家列表
-    if (isYdig) {
-      // 匿名投票：不显示各玩家投票状态，仅提示匿名
-      const anon = document.createElement('p');
-      anon.style.cssText = 'text-align:left;font-size:18px;color:#888;margin:8px 0 16px;line-height:1.6;';
-      anon.textContent = '🔒 匿名投票：不会公开谁投了什么，请凭本心评价';
-      dom.voteBody.appendChild(anon);
-    } else {
+    // 你画我猜为匿名投票：不显示各玩家投票状态（也不显示匿名提示文案）
+    if (!isYdig) {
       const listDiv = document.createElement('div');
       listDiv.id = 'accuracy-voter-list';
       listDiv.style.cssText = 'text-align:left;font-size:22px;line-height:2.2;margin:8px 0 16px;padding:10px;background:#1a1a3e;border-radius:10px;box-sizing:border-box';
