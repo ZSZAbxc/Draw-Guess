@@ -1732,16 +1732,24 @@ function connectSocket() {
 
   socket.on('room_error', (data) => {
     if (state._reconnecting) {
-      // 重连失败
-      const banner = document.getElementById('reconnect-banner');
-      if (banner) {
-        banner.style.background = '#e74c3c';
-        banner.textContent = '房间已不存在';
-        setTimeout(() => { banner.classList.add('hidden'); }, 3000);
-      }
+      // 重连失败（如房间已不存在）：清空记录并弹回游戏主页
+      const msg = (data && data.message) || '房间已不存在';
       localStorage.removeItem('draw_roomId');
       localStorage.removeItem('draw_nickname');
       state._reconnecting = false;
+      stopTimer();
+      stopYdigSnapshotTimer();
+      state.ydigDraw = false;
+      state.mode = 'classic';
+      const banner = document.getElementById('reconnect-banner');
+      if (banner) {
+        banner.style.background = '#e74c3c';
+        banner.textContent = msg + '，已返回主页';
+        banner.classList.remove('hidden');
+        setTimeout(() => banner.classList.add('hidden'), 3000);
+      }
+      showToast('⚠️ ' + msg + '，请重新创建或加入房间');
+      showPage('entry');
       return;
     }
     dom.entryError.textContent = data.message;
