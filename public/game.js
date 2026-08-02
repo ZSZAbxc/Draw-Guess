@@ -718,7 +718,15 @@ function drawYdigSnapshot(imageData) {
 
 function uploadYdigSnapshot() {
   if (state.mode !== 'ydig' || !state.ydigDraw || !canvas) return;
-  socket.emit('ydig_snapshot', { image: canvas.toDataURL('image/jpeg', 0.7) });
+  // JPEG 不支持透明通道：先把橡皮擦擦除的透明区合成到白底上，避免快照出现黑斑
+  const tmp = document.createElement('canvas');
+  tmp.width = canvas.width;
+  tmp.height = canvas.height;
+  const tctx = tmp.getContext('2d');
+  tctx.fillStyle = '#ffffff';
+  tctx.fillRect(0, 0, tmp.width, tmp.height);
+  tctx.drawImage(canvas, 0, 0);
+  socket.emit('ydig_snapshot', { image: tmp.toDataURL('image/jpeg', 0.7) });
 }
 
 function startYdigSnapshotTimer() {
@@ -1249,7 +1257,7 @@ function connectSocket() {
       else addYdigMsg(`❌ ${g.nickname} 猜"${g.word}"，猜错了`, 'wrong');
     });
     if (data.state === 'ydig_word_select' && data.isDrawer && data.candidates) {
-      showYdigWordSelect(data.candidates, 10, data.round, data.totalRounds);
+      showYdigWordSelect(data.candidates, data.remaining || 10, data.round, data.totalRounds);
       startTimer(data.remaining || 10, () => {
         if (data.candidates[0]) socket.emit('select_word', { word: data.candidates[0] });
         dom.ydigWordSelectOverlay.classList.add('hidden');

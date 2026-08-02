@@ -1370,6 +1370,7 @@ io.on('connection', (socket) => {
       order,
       usedDrawers: new Set(),
       wordCount: Math.max(1, Math.min(6, room.config.wordCount || 3)), // 开局冻结，避免局中被改
+      drawTime: Math.max(10, Math.min(180, room.config.drawTime || 60)), // 开局冻结
       drawerId: null,
       candidates: [],
       word: '',
@@ -1453,19 +1454,19 @@ io.on('connection', (socket) => {
       drawerId: yd.drawerId,
       wordLength: yd.wordLength,
       hint: yd.hint,
-      drawTime: room.config.drawTime
+      drawTime: yd.drawTime
     });
     systemToast(room, `🎨 ${drawerNick} 开始作画！答案 ${yd.wordLength} 个字${yd.hint ? `，提示：${yd.hint}` : ''}`, 3000);
     const drawerSocket = findPlayerSocket(yd.drawerId);
     if (drawerSocket && drawerSocket.connected) {
-      drawerSocket.emit('ydig_draw_start', { word: yd.word, drawTime: room.config.drawTime });
+      drawerSocket.emit('ydig_draw_start', { word: yd.word, drawTime: yd.drawTime });
     }
     room.timerStart = Date.now();
     // 作画时间到 → 本轮结束进入评价
     room.timer = setTimeout(() => {
       if (room.state !== 'ydig_draw') return;
       endYdigDrawRound(room);
-    }, room.config.drawTime * 1000);
+    }, yd.drawTime * 1000);
   }
 
   function endYdigDrawRound(room) {
@@ -1480,6 +1481,8 @@ io.on('connection', (socket) => {
       correctCount: yd.correctIds.size,
       drawer: getNickname(room, yd.drawerId)
     });
+    // 明确广播本轮词汇，避免玩家错过答案
+    systemToast(room, `🎉 本轮答案是「${yd.word}」！${yd.correctIds.size > 0 ? `${yd.correctIds.size} 人猜对` : '没人猜对'}`, 4000);
     // 进入评价：复用相符/不相符投票，20 秒（全员投完自动缩短到 5 秒）
     room.state = 'ydig_review';
     room.votePhase = 'accuracy';
@@ -2067,7 +2070,7 @@ io.on('connection', (socket) => {
           myCorrect: !!(yd && yd.correctIds.has(socket.id)),
           lastGuess: yd ? (yd.lastGuessByPlayer.get(socket.id) || null) : null
         });
-        const remain = getRemaining(room, room.state === 'ydig_draw' ? room.config.drawTime : 10);
+        const remain = getRemaining(room, room.state === 'ydig_draw' ? (yd ? yd.drawTime : room.config.drawTime) : 10);
         socket.emit('timer_sync', { remaining: remain });
         // 评价阶段重发投票请求
         if (room.state === 'ydig_review') {
