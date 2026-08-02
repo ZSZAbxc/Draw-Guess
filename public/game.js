@@ -759,6 +759,7 @@ function showClassicGameUI() {
   dom.ydigGuessPanel.classList.add('hidden');
   dom.ydigHintOverlay.classList.add('hidden');
   dom.ydigWordSelectOverlay.classList.add('hidden');
+  if (canvas) canvas.classList.remove('ydig-draw-canvas');
   if (dom.drawWordDisplay) dom.drawWordDisplay.style.display = '';
   if (dom.btnSubmitDrawing) dom.btnSubmitDrawing.style.display = '';
 }
@@ -1176,6 +1177,7 @@ function connectSocket() {
     // 固定逻辑尺寸画布，避免不同设备画布大小不一致；显示尺寸由 CSS 适配
     canvas.width = YDIG_CANVAS_W;
     canvas.height = YDIG_CANVAS_H;
+    canvas.classList.add('ydig-draw-canvas');
     if (ctx) {
       ctx.fillStyle = 'white';
       ctx.fillRect(0, 0, YDIG_CANVAS_W, YDIG_CANVAS_H);
@@ -1260,11 +1262,15 @@ function connectSocket() {
         state.ydigWord = data.word || '';
         canvas.width = YDIG_CANVAS_W;
         canvas.height = YDIG_CANVAS_H;
+        canvas.classList.add('ydig-draw-canvas');
         if (ctx) {
           ctx.fillStyle = 'white';
           ctx.fillRect(0, 0, YDIG_CANVAS_W, YDIG_CANVAS_H);
           ctx.lineCap = 'round';
           ctx.lineJoin = 'round';
+          ctx.lineWidth = brushWidth;
+          ctx.strokeStyle = isEraser ? '#ffffff' : selectedColor;
+          ctx.globalCompositeOperation = 'source-over'; // 重置，防止断线前橡皮擦状态残留导致画不出来
         }
         dom.ydigDrawWord.textContent = state.ydigWord;
         dom.ydigDrawerTip.classList.remove('hidden');
@@ -1679,6 +1685,9 @@ function connectSocket() {
       showYdigGameUI();
     } else {
       showClassicGameUI();
+    }
+    if (state.mode === 'ydig' && dom.ydigGuessInput) {
+      dom.ydigGuessInput.disabled = true; // 角色由 ydig_state 确认后再放开
     }
     showToast(`🔄 已重连到游戏中（第 ${data.currentRound+1}/${data.totalRounds} 轮）`);
     // 隐藏所有游戏子界面，等待服务端发送对应事件恢复
