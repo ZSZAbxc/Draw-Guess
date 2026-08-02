@@ -184,7 +184,9 @@ function createRoom(id, socket, nickname, password, avatar) {
       drawTime: 60,
       guessTime: 20,
       wordLib: '【简体中文】默认',
-      cleverIdea: false
+      cleverIdea: false,
+      youDrawIGuess: false,   // 你画我猜模式（与默认模式平行）
+      wordCount: 3            // 你画我猜：可选词数 1-6，默认 3
     },
     K: 0,
     chains: [],
@@ -205,6 +207,10 @@ function createRoom(id, socket, nickname, password, avatar) {
     votesArtwork: new Map(),    // playerId -> votedPlayerId
     scoreA: new Map(),          // playerId -> 准确度得分(被投√)
     scoreB: new Map(),          // playerId -> 画作得分(被投)
+    // 你画我猜模式数据
+    ydig: null,                 // 当前局 ydig 状态对象（未开启时为 null）
+    scoreYdigGuess: new Map(),  // playerId -> 作为猜手获得的得分
+    scoreYdigDraw: new Map(),   // playerId -> 作为画手获得的得分（被猜对得分+相符票）
     // 聊天记录
     chat: []
   };
@@ -768,7 +774,11 @@ function finishGame(room) {
   });
 
   systemToast(room, '🏆 游戏结束！查看最终排名！', 5000);
+  resetRoomAfterGame(room);
+}
 
+// 游戏结束后重置房间到大厅（保留玩家列表与配置），普通/灵机一动/你画我猜共用
+function resetRoomAfterGame(room) {
   // 房间状态设为大厅，允许新玩家加入
   room.state = 'lobby';
 
@@ -789,9 +799,20 @@ function finishGame(room) {
   room.votePhase = null;
   room.votesAccuracy = new Map();
   room.votesArtwork = new Map();
+  room.ydig = null;
+  room.scoreYdigGuess = new Map();
+  room.scoreYdigDraw = new Map();
   room._disconnected = new Map();
   room.timerStart = null;
-  room.config = { drawTime: room.config.drawTime, guessTime: room.config.guessTime, wordLib: room.config.wordLib || '【简体中文】默认', cleverIdea: room.config.cleverIdea || false };
+  // 保留全部设置（含模式开关与可选词数），确保重开后能继续选择模式/参数
+  room.config = {
+    drawTime: room.config.drawTime,
+    guessTime: room.config.guessTime,
+    wordLib: room.config.wordLib || '【简体中文】默认',
+    cleverIdea: room.config.cleverIdea || false,
+    youDrawIGuess: room.config.youDrawIGuess || false,
+    wordCount: Math.max(1, Math.min(6, parseInt(room.config.wordCount) || 3))
+  };
 }
 
 // ============================================================
@@ -919,6 +940,14 @@ io.on('connection', (socket) => {
     }
     if (data.cleverIdea !== undefined) {
       room.config.cleverIdea = !!data.cleverIdea;
+    }
+    if (data.youDrawIGuess !== undefined) {
+      room.config.youDrawIGuess = !!data.youDrawIGuess;
+      // 你画我猜是独立游戏模式：开启时强制关闭灵机一动（该选项仅默认模式可用）
+      if (room.config.youDrawIGuess) room.config.cleverIdea = false;
+    }
+    if (data.wordCount !== undefined) {
+      room.config.wordCount = Math.max(1, Math.min(6, parseInt(data.wordCount) || 3));
     }
 
     broadcastRoomUpdate(room);
@@ -1056,18 +1085,26 @@ io.on('connection', (socket) => {
     room.votePhase = null;
     room.votesAccuracy = new Map();
     room.votesArtwork = new Map();
+    room.ydig = null;
+    room.scoreYdigGuess = new Map();
+    room.scoreYdigDraw = new Map();
     if (room._disconnected) room._disconnected.clear();
 
     // 通知游戏开始
-    io.to(room.id).emit('game_started', { K });
-    systemToast(room, `🎮 游戏开始！共 ${chains.length} 条链条，每条 ${2*K} 步！`, 3000);
+    const mode = room.config.youDrawIGuess ? 'ydig' : 'classic';
+    io.to(room.id).emit('game_started', { K, mode, totalRounds: room.players.length });
+    systemToast(room, mode === 'ydig'
+      ? `🎮 你画我猜开始！共 ${room.players.length} 轮，大家轮流当画手！`
+      : `🎮 游戏开始！共 ${chains.length} 条链条，每条 ${2*K} 步！`, 3000);
 
     // 根据房间配置加载对应词库（每次游戏开始时冻结词库快照，避免多房间互相影响）
     const libName = room.config.wordLib || '【简体中文】默认';
     words.setCurrentLib(libName);
     room._wordList = [...words]; // 冻结当前词库副本到房间
-    // 如果开启灵机一动，先进入玩家提供初始词阶段
-    if (room.config.cleverIdea) {
+    // 模式分支：你画我猜 > 灵机一动 > 默认
+    if (room.config.youDrawIGuess) {
+      startYdigGame(room);
+    } else if (room.config.cleverIdea) {
       startCleverIdeaPhase(room);
     } else {
       startWordSelection(room);
@@ -1234,11 +1271,24 @@ io.on('connection', (socket) => {
 
   socket.on('select_word', (data) => {
     const room = findRoomBySocket(socket);
-    if (!room || room.state !== 'word_select') return;
+    if (!room) return;
 
     // 兼容裸字符串与 { word } 对象（约定：一律传对象）
     const word = typeof data === 'string' ? data : (data && data.word);
     if (!word) return;
+
+    // 你画我猜：仅画手可从本轮候选词中选择
+    if (room.state === 'ydig_word_select') {
+      const yd = room.ydig;
+      if (!yd || socket.id !== yd.drawerId) return;
+      if (!yd.candidates.includes(word)) return; // 只允许候选词之一
+      yd.word = word;
+      clearRoomTimer(room);
+      startYdigHintPhase(room);
+      return;
+    }
+
+    if (room.state !== 'word_select') return;
 
     const chain = room.chains.find(c => c.startPlayerId === socket.id);
     if (!chain) return;
@@ -1305,6 +1355,195 @@ io.on('connection', (socket) => {
       });
       startDrawingRound(room);
     }, room.config.guessTime * 1000);
+  }
+
+  // ============================================================
+  // 你画我猜模式：N 名玩家轮流当画手，其余人实时观看并抢答猜词
+  // ============================================================
+  function startYdigGame(room) {
+    // 随机确定画手顺序，每人恰好一轮
+    const order = room.players.map(p => p.id);
+    order.sort(() => Math.random() - 0.5);
+    room.ydig = {
+      round: 0,
+      totalRounds: room.players.length,
+      order,
+      usedDrawers: new Set(),
+      wordCount: Math.max(1, Math.min(6, room.config.wordCount || 3)), // 开局冻结，避免局中被改
+      drawerId: null,
+      candidates: [],
+      word: '',
+      hint: '',
+      wordLength: 0,
+      guesses: [],                // [{nickname, word, correct, score}]
+      lastGuessByPlayer: new Map(), // playerId -> 上一次猜词
+      correctIds: new Set(),      // 已猜对的玩家
+      snapshot: null              // 最近画布快照（重连用）
+    };
+    startNextYdigRound(room);
+  }
+
+  function startNextYdigRound(room) {
+    const yd = room.ydig;
+    if (!yd || yd.round >= yd.totalRounds) {
+      finishYdigGame(room);
+      return;
+    }
+    yd.drawerId = yd.order[yd.round];
+    yd.usedDrawers.add(yd.drawerId);
+    yd.candidates = getRandomWords(yd.wordCount, room._wordList);
+    yd.word = '';
+    yd.hint = '';
+    yd.wordLength = 0;
+    yd.guesses = [];
+    yd.lastGuessByPlayer = new Map();
+    yd.correctIds = new Set();
+    yd.snapshot = null;
+
+    room.state = 'ydig_word_select';
+    room.timerStart = Date.now();
+    const drawerSocket = findPlayerSocket(yd.drawerId);
+    if (drawerSocket && drawerSocket.connected) {
+      drawerSocket.emit('ydig_word_select', {
+        candidates: yd.candidates,
+        timeout: 10,
+        round: yd.round + 1,
+        totalRounds: yd.totalRounds
+      });
+      systemToast(room, `🎯 第 ${yd.round + 1}/${yd.totalRounds} 轮：${getNickname(room, yd.drawerId)} 正在选词...`, 3000);
+      // 选词超时：自动选第一个候选
+      room.timer = setTimeout(() => {
+        if (room.state !== 'ydig_word_select') return;
+        yd.word = yd.candidates[0];
+        startYdigHintPhase(room);
+      }, 10 * 1000);
+    } else {
+      // 画手离线：自动选词继续，时间照常推进（等待其重连，时间到后进入评价）
+      yd.word = yd.candidates[0];
+      startYdigHintPhase(room);
+    }
+  }
+
+  function startYdigHintPhase(room) {
+    const yd = room.ydig;
+    room.state = 'ydig_hint';
+    const drawerSocket = findPlayerSocket(yd.drawerId);
+    if (drawerSocket && drawerSocket.connected) {
+      drawerSocket.emit('ydig_hint_input', { timeout: 10 });
+    }
+    room.timerStart = Date.now();
+    // 10 秒未填提示：按无提示进入作画
+    room.timer = setTimeout(() => {
+      if (room.state !== 'ydig_hint') return;
+      startYdigDrawPhase(room);
+    }, 10 * 1000);
+  }
+
+  function startYdigDrawPhase(room) {
+    const yd = room.ydig;
+    if (!yd.word) yd.word = yd.candidates[0];
+    yd.wordLength = Array.from(yd.word).length; // 按字符数统计（中文 1 个字符=1 字）
+    room.state = 'ydig_draw';
+    const drawerNick = getNickname(room, yd.drawerId);
+    // 全员广播：答案字数 + 提示（答案本身只发给画手）
+    io.to(room.id).emit('ydig_round_start', {
+      round: yd.round + 1,
+      totalRounds: yd.totalRounds,
+      drawer: drawerNick,
+      drawerId: yd.drawerId,
+      wordLength: yd.wordLength,
+      hint: yd.hint,
+      drawTime: room.config.drawTime
+    });
+    systemToast(room, `🎨 ${drawerNick} 开始作画！答案 ${yd.wordLength} 个字${yd.hint ? `，提示：${yd.hint}` : ''}`, 3000);
+    const drawerSocket = findPlayerSocket(yd.drawerId);
+    if (drawerSocket && drawerSocket.connected) {
+      drawerSocket.emit('ydig_draw_start', { word: yd.word, drawTime: room.config.drawTime });
+    }
+    room.timerStart = Date.now();
+    // 作画时间到 → 本轮结束进入评价
+    room.timer = setTimeout(() => {
+      if (room.state !== 'ydig_draw') return;
+      endYdigDrawRound(room);
+    }, room.config.drawTime * 1000);
+  }
+
+  function endYdigDrawRound(room) {
+    if (room.state !== 'ydig_draw') return;
+    clearRoomTimer(room);
+    const yd = room.ydig;
+    io.to(room.id).emit('ydig_round_end', {
+      round: yd.round + 1,
+      totalRounds: yd.totalRounds,
+      word: yd.word,
+      hint: yd.hint,
+      correctCount: yd.correctIds.size,
+      drawer: getNickname(room, yd.drawerId)
+    });
+    // 进入评价：复用相符/不相符投票，20 秒（全员投完自动缩短到 5 秒）
+    room.state = 'ydig_review';
+    room.votePhase = 'accuracy';
+    room.votesAccuracy = new Map();
+    room.timerStart = Date.now();
+    io.to(room.id).emit('vote_request', {
+      type: 'accuracy',
+      mode: 'ydig',
+      chainIndex: yd.round,
+      timeout: 20,
+      data: {
+        mode: 'ydig',
+        drawer: getNickname(room, yd.drawerId),
+        word: yd.word,
+        hint: yd.hint,
+        wordLength: yd.wordLength,
+        players: room.players.map(p => ({ id: p.id, nickname: p.nickname, avatar: p.avatar || '😀', latency: getLatency(p.id) }))
+      }
+    });
+    systemToast(room, `🗳️ 大家评价一下 ${getNickname(room, yd.drawerId)} 的画作吧！相符 +1 分`, 3000);
+    room.timer = setTimeout(() => handleYdigReviewTimeout(room), 20000);
+  }
+
+  function handleYdigReviewTimeout(room) {
+    if (room.state !== 'ydig_review') return;
+    clearRoomTimer(room);
+    const yd = room.ydig;
+    let correctVotes = 0;
+    room.votesAccuracy.forEach(v => { if (v === 'correct') correctVotes++; });
+    addScore(room.scoreYdigDraw, yd.drawerId, correctVotes);
+    io.to(room.id).emit('chain_end', { chainIndex: yd.round, mode: 'ydig', accuracyVotes: correctVotes, artworkVotes: {} });
+    systemToast(room, `✅ 本轮画手 ${getNickname(room, yd.drawerId)} 获得 ${correctVotes} 张相符票`, 3000);
+    // 展示 5 秒结果后进入下一轮
+    room.timer = setTimeout(() => {
+      yd.round++;
+      if (yd.round >= yd.totalRounds) {
+        finishYdigGame(room);
+      } else {
+        startNextYdigRound(room);
+      }
+    }, 5000);
+  }
+
+  function finishYdigGame(room) {
+    room.state = 'finished';
+    clearRoomTimer(room);
+    // 猜手榜 / 画手榜 / MVP（总分=猜手分+画手分）
+    const guessData = scoreMapToNames(room, room.scoreYdigGuess);
+    const drawData = scoreMapToNames(room, room.scoreYdigDraw);
+    const totalMap = new Map();
+    room.players.forEach(p => {
+      totalMap.set(p.id, (room.scoreYdigGuess.get(p.id) || 0) + (room.scoreYdigDraw.get(p.id) || 0));
+    });
+    const mvpData = scoreMapToNames(room, totalMap);
+    room.players.forEach(p => { p.settling = true; });
+    io.to(room.id).emit('game_finished', {
+      mode: 'ydig',
+      scoreA: guessData.scores,
+      scoreB: drawData.scores,
+      scoreMVP: mvpData.scores,
+      titles: { accuracyBest: guessData.names, artworkBest: drawData.names, mvp: mvpData.names }
+    });
+    systemToast(room, '🏆 你画我猜结束！查看最终排名！', 5000);
+    resetRoomAfterGame(room);
   }
 
   // ----- 提交画作 -----
@@ -1442,12 +1681,116 @@ io.on('connection', (socket) => {
     checkAllSubmitted(room);
   });
 
+  // ----- 你画我猜：画手提交提示（≤5字，留空=无提示）-----
+  socket.on('submit_hint', (data) => {
+    const room = findRoomBySocket(socket);
+    if (!room || room.state !== 'ydig_hint') return;
+    const yd = room.ydig;
+    if (!yd || socket.id !== yd.drawerId) return;
+    const hint = (data && typeof data.hint === 'string' ? data.hint : '').trim();
+    yd.hint = hint.length > 5 ? '' : hint; // 超过 5 个字按无提示处理
+    clearRoomTimer(room);
+    startYdigDrawPhase(room);
+  });
+
+  // ----- 你画我猜：画手增量笔画（实时同步给观众）-----
+  socket.on('ydig_draw_event', (data) => {
+    const room = findRoomBySocket(socket);
+    if (!room || room.state !== 'ydig_draw') return;
+    const yd = room.ydig;
+    if (!yd || socket.id !== yd.drawerId) return;
+    const t = data && data.t;
+    if (!['begin', 'stroke', 'end', 'clear'].includes(t)) return;
+    if (t === 'begin' && (typeof data.x !== 'number' || typeof data.y !== 'number')) return;
+    if (t === 'stroke') {
+      if (!Array.isArray(data.pts) || data.pts.length === 0 || data.pts.length > 500) return;
+      for (const p of data.pts) {
+        if (!Array.isArray(p) || p.length < 2 || typeof p[0] !== 'number' || typeof p[1] !== 'number') return;
+      }
+    }
+    socket.to(room.id).emit('ydig_draw_event', data);
+  });
+
+  // ----- 你画我猜：画手节流上传画布快照（观众校准/重连恢复）-----
+  socket.on('ydig_snapshot', (data) => {
+    const room = findRoomBySocket(socket);
+    if (!room || room.state !== 'ydig_draw') return;
+    const yd = room.ydig;
+    if (!yd || socket.id !== yd.drawerId) return;
+    const img = data && data.image;
+    if (typeof img !== 'string' || !img.startsWith('data:image/') || img.length > 5 * 1024 * 1024) return;
+    yd.snapshot = img;
+    socket.to(room.id).emit('ydig_snapshot', { image: img });
+  });
+
+  // ----- 你画我猜：观众抢答猜词 -----
+  socket.on('ydig_guess', (data) => {
+    const room = findRoomBySocket(socket);
+    if (!room || room.state !== 'ydig_draw') return;
+    const yd = room.ydig;
+    if (!yd) return;
+    const word = (data && typeof data.word === 'string' ? data.word : '').trim();
+    if (!word || word.length > 50) return;
+    const player = room.players.find(p => p.id === socket.id);
+    if (!player || socket.id === yd.drawerId) return; // 画手不参与猜词
+    if (yd.correctIds.has(socket.id)) return;         // 已猜对则锁定
+    if (yd.lastGuessByPlayer.get(socket.id) === word) return; // 与上一次猜测相同则忽略（防刷屏）
+    yd.lastGuessByPlayer.set(socket.id, word);
+
+    const correct = word === yd.word;
+    if (correct) {
+      yd.correctIds.add(socket.id);
+      const rank = yd.correctIds.size;
+      // 第一个猜对者得（总人数-1）分，之后每往后一名 -1，最低 1 分；画手获得与猜对者相同分数
+      const score = Math.max(1, (yd.totalRounds - 1) - (rank - 1));
+      addScore(room.scoreYdigGuess, socket.id, score);
+      addScore(room.scoreYdigDraw, yd.drawerId, score);
+      yd.guesses.push({ nickname: player.nickname, word, correct: true, score });
+      io.to(room.id).emit('ydig_guess_result', { nickname: player.nickname, word, correct: true, score, drawerScore: score });
+      // 除画手外全部猜对 → 本轮立即结束
+      if (yd.correctIds.size >= room.players.length - 1) {
+        endYdigDrawRound(room);
+      }
+    } else {
+      yd.guesses.push({ nickname: player.nickname, word, correct: false, score: 0 });
+      io.to(room.id).emit('ydig_guess_result', { nickname: player.nickname, word, correct: false, score: 0 });
+    }
+  });
+
   // ----- 投票（正误）-----
   socket.on('vote_accuracy', (data) => {
     const room = findRoomBySocket(socket);
     if (!room) return;
 
     const { chainIndex, vote } = data;
+    // 你画我猜：评价本轮画手（相符 +1 分）
+    if (room.state === 'ydig_review') {
+      const yd = room.ydig;
+      if (!yd || yd.round !== chainIndex) return;
+      if (room.votesAccuracy.has(socket.id)) return; // 已投票
+      room.votesAccuracy.set(socket.id, vote);
+      const voterStatus = room.players.map(p => ({
+        playerId: p.id,
+        nickname: p.nickname,
+        avatar: p.avatar || '😀',
+        latency: getLatency(p.id),
+        vote: room.votesAccuracy.get(p.id) || null
+      }));
+      io.to(room.id).emit('vote_progress', {
+        voted: room.votesAccuracy.size,
+        total: room.players.length,
+        voterStatus
+      });
+      // 全员投完且剩余 >5s 则缩短为 5s
+      const elapsed = Date.now() - (room.timerStart || Date.now());
+      const remaining = Math.max(0, 20000 - elapsed);
+      if (room.votesAccuracy.size >= room.players.length && room.timer && remaining > 5000) {
+        clearRoomTimer(room);
+        room.timer = setTimeout(() => handleYdigReviewTimeout(room), 5000);
+        io.to(room.id).emit('timer_sync', { remaining: 5 });
+      }
+      return;
+    }
     if (room.currentChainIndex !== chainIndex) return;
     if (room.votesAccuracy.has(socket.id)) return; // 已投票
 
@@ -1651,6 +1994,26 @@ io.on('connection', (socket) => {
       if (chain.startPlayerId === oldPlayerId) chain.startPlayerId = socket.id;
     });
 
+    // 迁移你画我猜数据：旧 ID → 新 ID
+    if (room.ydig) {
+      const yd = room.ydig;
+      if (yd.drawerId === oldPlayerId) yd.drawerId = socket.id;
+      yd.order = yd.order.map(id => id === oldPlayerId ? socket.id : id);
+      if (yd.usedDrawers.has(oldPlayerId)) { yd.usedDrawers.delete(oldPlayerId); yd.usedDrawers.add(socket.id); }
+      if (yd.correctIds.has(oldPlayerId)) { yd.correctIds.delete(oldPlayerId); yd.correctIds.add(socket.id); }
+      if (yd.lastGuessByPlayer.has(oldPlayerId)) {
+        yd.lastGuessByPlayer.set(socket.id, yd.lastGuessByPlayer.get(oldPlayerId));
+        yd.lastGuessByPlayer.delete(oldPlayerId);
+      }
+    }
+    [room.scoreYdigGuess, room.scoreYdigDraw].forEach(scoreMap => {
+      if (!scoreMap) return;
+      if (scoreMap.has(oldPlayerId)) {
+        scoreMap.set(socket.id, scoreMap.get(oldPlayerId));
+        scoreMap.delete(oldPlayerId);
+      }
+    });
+
     // 清理断线记录
     if (room._disconnected) room._disconnected.delete(oldPlayerId);
 
@@ -1670,18 +2033,58 @@ io.on('connection', (socket) => {
       }
     } else {
       // 游戏中：发送当前状态让客户端恢复
-      let totalRounds = 2 * room.K;
+      const isYdig = room.state.startsWith('ydig_');
+      const ydigRound = room.ydig ? room.ydig.round : 0;
+      const totalRounds = isYdig ? (room.ydig ? room.ydig.totalRounds : 0) : 2 * room.K;
       socket.emit('reconnect_game', {
         roomId,
         state: room.state,
+        mode: isYdig ? 'ydig' : 'classic',
         K: room.K,
-        currentRound: room.currentRound,
+        currentRound: isYdig ? ydigRound : room.currentRound,
         totalRounds,
         config: room.config
       });
 
       // 根据当前状态发送对应任务
-      if (room.state === 'word_select') {
+      if (isYdig) {
+        // 你画我猜：下发当前阶段全量状态
+        const yd = room.ydig;
+        const isDrawer = !!(yd && yd.drawerId === socket.id);
+        socket.emit('ydig_state', {
+          state: room.state,
+          round: yd ? yd.round + 1 : 1,
+          totalRounds: yd ? yd.totalRounds : 0,
+          drawer: yd ? getNickname(room, yd.drawerId) : '',
+          drawerId: yd ? yd.drawerId : null,
+          isDrawer,
+          word: isDrawer && yd ? yd.word : undefined,
+          wordLength: yd ? yd.wordLength : 0,
+          hint: yd ? yd.hint : '',
+          candidates: (room.state === 'ydig_word_select' && isDrawer && yd) ? yd.candidates : undefined,
+          snapshot: yd ? yd.snapshot : null,
+          guesses: yd ? yd.guesses.slice(-50) : [],
+          myCorrect: !!(yd && yd.correctIds.has(socket.id)),
+          lastGuess: yd ? (yd.lastGuessByPlayer.get(socket.id) || null) : null
+        });
+        const remain = getRemaining(room, room.state === 'ydig_draw' ? room.config.drawTime : 10);
+        socket.emit('timer_sync', { remaining: remain });
+        // 评价阶段重发投票请求
+        if (room.state === 'ydig_review') {
+          socket.emit('vote_request', {
+            type: 'accuracy', mode: 'ydig', chainIndex: yd.round, timeout: getRemaining(room, 20),
+            data: {
+              mode: 'ydig',
+              drawer: getNickname(room, yd.drawerId),
+              word: yd.word,
+              hint: yd.hint,
+              wordLength: yd.wordLength,
+              players: room.players.map(p => ({ id: p.id, nickname: p.nickname, avatar: p.avatar || '😀', latency: getLatency(p.id) })),
+              myVote: room.votesAccuracy.get(socket.id) || null
+            }
+          });
+        }
+      } else if (room.state === 'word_select') {
         // 选词阶段：重发 word_select（如果该玩家是起点）
         room.chains.forEach((chain, ci) => {
           if (chain.startNickname === nickname) {
@@ -1888,6 +2291,30 @@ function findRoomBySocket(socket) {
     if (room.players.find(p => p.id === socket.id)) return room;
   }
   return null;
+}
+
+function getNickname(room, playerId) {
+  const p = room.players.find(x => x.id === playerId);
+  return p ? p.nickname : '未知';
+}
+
+function addScore(map, playerId, points) {
+  if (!map || !playerId || !(points > 0)) return;
+  map.set(playerId, (map.get(playerId) || 0) + points);
+}
+
+// 将分数 Map 转为 { scores: {昵称:分}, names: [最高分昵称...] }（支持并列）
+function scoreMapToNames(room, map) {
+  const scores = {};
+  let max = 0;
+  const names = [];
+  map.forEach((score, playerId) => {
+    const player = room.players.find(p => p.id === playerId);
+    if (player) scores[player.nickname] = score;
+    if (score > max) { max = score; names.length = 0; }
+    if (score >= max && player) names.push(player.nickname);
+  });
+  return { scores, names };
 }
 
 function broadcastSubmitProgress(room) {

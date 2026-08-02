@@ -60,7 +60,7 @@
           <label>🎨 作画时间：<span id="draw-time-display">60</span>秒</label>
           <input type="range" id="draw-time-slider" min="10" max="180" value="60" step="10">
         </div>
-        <div class="setting-row owner-only-control">
+        <div class="setting-row owner-only-control" id="guess-time-row">
           <label>💬 猜词时间：<span id="guess-time-display">20</span>秒</label>
           <input type="range" id="guess-time-slider" min="10" max="60" value="20" step="5">
         </div>
@@ -68,7 +68,21 @@
           <label>📖 词库：<span id="wordlib-display">默认</span></label>
           <select id="wordlib-selector" style="width:100%;padding:10px;border:2px solid #444;border-radius:8px;background:#2a2a3e;color:#eee;font-size:18px;margin-top:4px"></select>
         </div>
-        <div class="setting-row owner-only-control">
+        <div class="setting-row owner-only-control" id="ydig-mode-row">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="checkbox" id="ydig-mode-checkbox"> 🎨 <span id="ydig-mode-label">你画我猜</span>
+          </label>
+          <div style="font-size:12px;color:#888;margin-top:2px;line-height:1.6">大家轮流当画手！一人作画，其他人实时看着画抢答猜词，越早猜对得分越高，画手也会跟着得分；每轮画完大家投票评价，所有人轮完一遍后结算。</div>
+        </div>
+        <div class="setting-row owner-only-control" id="word-count-row" style="display:none">
+          <label>🔢 可选词数：<span id="word-count-display">3</span> 个</label>
+          <input type="range" id="word-count-slider" min="1" max="6" value="3" step="1">
+        </div>
+        <div id="ydig-nonowner-hint" class="setting-row nonowner-text hidden" style="display:none">
+          <div style="font-size:14px;color:#f39c12">🎨 你画我猜模式</div>
+          <div style="font-size:12px;color:#888;margin-top:2px">轮流当画手，其他人实时观看并抢答猜词。</div>
+        </div>
+        <div class="setting-row owner-only-control" id="clever-idea-row">
           <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
             <input type="checkbox" id="clever-idea-checkbox"> 💡 <span id="clever-label-text">灵机一动</span>
           </label>
@@ -80,7 +94,8 @@
         </div>
         <div class="setting-row nonowner-text" style="display:none">
           <div>🎨 作画时间：<strong><span id="ndraw-time">60</span>秒</strong></div>
-          <div style="margin-top:8px">💬 猜词时间：<strong><span id="nguess-time">20</span>秒</strong></div>
+          <div style="margin-top:8px">💬 猜词时间：<strong><span id="nguess-time">20</span>秒</strong><span id="nguess-mode-wordcount" style="display:none;color:#f39c12">（你画我猜模式）</span></div>
+          <div id="nword-count-row" style="display:none;margin-top:8px">🔢 可选词数：<strong><span id="nword-count">3</span> 个</strong></div>
           <div style="margin-top:8px">📖 词库：<strong><span id="nwordlib">默认</span></strong></div>
         </div>
       </div>
@@ -119,6 +134,19 @@
     <span id="round-info"></span>
     <span id="timer-display"></span>
     <span id="task-info"></span>
+  </div>
+
+  <!-- 你画我猜界面 -->
+  <div id="ydig-area" class="hidden">
+    <div id="ydig-header">
+      <span id="ydig-round-info"></span>
+      <span id="ydig-status-text"></span>
+      <span id="ydig-timer"></span>
+    </div>
+    <div id="ydig-drawer-tip" class="hidden">🎯 画出这个词：<span id="ydig-draw-word"></span></div>
+    <div id="ydig-viewer" class="hidden">
+      <canvas id="ydig-canvas"></canvas>
+    </div>
   </div>
 
   <!-- 作画界面 -->
@@ -189,6 +217,36 @@
     </div>
   </div>
 
+  <!-- 你画我猜：选词弹窗 -->
+  <div id="ydig-word-select-overlay" class="hidden overlay">
+    <div class="modal">
+      <h2>🎯 从候选词中选一个来画</h2>
+      <p id="ydig-word-select-tip"></p>
+      <div id="ydig-word-candidates"></div>
+      <div id="ydig-word-select-timer" class="timer-text"></div>
+    </div>
+  </div>
+
+  <!-- 你画我猜：提示输入弹窗（≤5字，留空=无提示） -->
+  <div id="ydig-hint-overlay" class="hidden overlay" style="z-index:2500">
+    <div class="modal" style="max-width:500px;padding:40px">
+      <div style="font-size:28px;margin-bottom:10px">💡 给个提示（选填）</div>
+      <p style="font-size:20px;color:#ccc">给其他玩家一点提示吧，不超过 <strong>5</strong> 个字；留空直接点确认也可以</p>
+      <input type="text" id="ydig-hint-input" maxlength="5" placeholder="最多5个字，留空=无提示" style="width:100%;padding:14px;font-size:20px;border:2px solid #555;border-radius:8px;background:#2a2a3e;color:#eee;margin:16px 0;box-sizing:border-box">
+      <div style="font-size:14px;color:#888" id="ydig-hint-timer"></div>
+      <button id="ydig-hint-submit" style="width:100%;padding:14px;font-size:22px;background:#e94560;color:white;border:none;border-radius:8px;margin-top:12px;cursor:pointer">✅ 确认（留空直接跳过）</button>
+    </div>
+  </div>
+
+  <!-- 你画我猜：猜词面板（固定，可滚动查看历史） -->
+  <div id="ydig-guess-panel" class="hidden">
+    <div id="ydig-guess-list"></div>
+    <div class="ydig-guess-input-row">
+      <input type="text" id="ydig-guess-input" maxlength="20" autocomplete="off" placeholder="猜一个词...">
+      <button id="ydig-guess-send">猜</button>
+    </div>
+  </div>
+
   <!-- 系统提示 Toast -->
   <div id="toast-container"></div>
 
@@ -246,6 +304,10 @@
     <div class="result-section">
       <h2>🎨 灵魂画手（最佳画家）</h2>
       <div id="result-b" class="result-names"></div>
+    </div>
+    <div class="result-section" id="result-mvp-section" style="display:none">
+      <h2>🏆 MVP（总分最高）</h2>
+      <div id="result-mvp" class="result-names"></div>
     </div>
     <p id="result-scores"></p>
     <p id="result-status" style="color:#f39c12;font-size:22px;margin:12px 0">📋 游戏已结束，可返回房间开始新游戏</p>

@@ -34,6 +34,18 @@ const state = {
   reviewChains: [],
   reviewStepTimer: null,
   currentChainLength: 0,
+  // 你画我猜
+  mode: 'classic',             // classic | ydig
+  ydigDraw: false,             // 我是否正在当画手作画
+  ydigRound: 0,
+  ydigTotalRounds: 0,
+  ydigDrawerId: null,
+  ydigWord: '',                // 画手答案（仅画手客户端持有）
+  ydigHint: '',
+  ydigWordLength: 0,
+  ydigSnapshotTimer: null,
+  ydigStrokeBuffer: [],
+  ydigLastFlush: 0,
 };
 
 // ---- DOM 引用 ----
@@ -73,6 +85,7 @@ dom.btnSubmitClever    = $('btn-submit-clever');
 dom.roundInfo          = $('round-info');
 dom.timerDisplay       = $('timer-display');
 dom.taskInfo           = $('task-info');
+dom.gameHeader         = $('game-header');
 dom.drawArea           = $('draw-area');
 dom.guessArea          = $('guess-area');
 dom.drawCanvas         = $('draw-canvas');
@@ -90,6 +103,28 @@ dom.guessProgress      = $('guess-progress');
 dom.wordSelectOverlay  = $('word-select-overlay');
 dom.wordCandidates     = $('word-candidates');
 dom.wordSelectTimer    = $('word-select-timer');
+
+// 你画我猜
+dom.ydigArea           = $('ydig-area');
+dom.ydigRoundInfo      = $('ydig-round-info');
+dom.ydigStatusText     = $('ydig-status-text');
+dom.ydigTimer          = $('ydig-timer');
+dom.ydigDrawerTip      = $('ydig-drawer-tip');
+dom.ydigDrawWord       = $('ydig-draw-word');
+dom.ydigViewer         = $('ydig-viewer');
+dom.ydigCanvas         = $('ydig-canvas');
+dom.ydigGuessPanel     = $('ydig-guess-panel');
+dom.ydigGuessList      = $('ydig-guess-list');
+dom.ydigGuessInput     = $('ydig-guess-input');
+dom.ydigGuessSend      = $('ydig-guess-send');
+dom.ydigWordSelectOverlay = $('ydig-word-select-overlay');
+dom.ydigWordCandidates = $('ydig-word-candidates');
+dom.ydigWordSelectTimer = $('ydig-word-select-timer');
+dom.ydigWordSelectTip  = $('ydig-word-select-tip');
+dom.ydigHintOverlay    = $('ydig-hint-overlay');
+dom.ydigHintInput      = $('ydig-hint-input');
+dom.ydigHintTimer      = $('ydig-hint-timer');
+dom.ydigHintSubmit     = $('ydig-hint-submit');
 
 // 聊天
 dom.lobbyChatInput     = $('lobby-chat-input');
@@ -224,6 +259,47 @@ function setupSettings() {
       }
     });
   }
+
+  // 你画我猜模式开关（与默认模式平行，开启后隐藏灵机一动）
+  const ydigCheck = document.getElementById('ydig-mode-checkbox');
+  if (ydigCheck) {
+    ydigCheck.addEventListener('change', () => {
+      if (state.isOwner && state.roomId) {
+        socket.emit('update_config', { youDrawIGuess: ydigCheck.checked });
+      }
+      applyModeSettingsUI(ydigCheck.checked);
+    });
+  }
+  // 可选词数（仅你画我猜模式）
+  const wordCountSlider = document.getElementById('word-count-slider');
+  if (wordCountSlider) {
+    wordCountSlider.addEventListener('input', () => {
+      const wc = document.getElementById('word-count-display');
+      if (wc) wc.textContent = wordCountSlider.value;
+      if (state.isOwner && state.roomId) {
+        socket.emit('update_config', { wordCount: parseInt(wordCountSlider.value) });
+      }
+    });
+  }
+}
+
+// 根据模式显示/隐藏设置项：你画我猜开启后隐藏猜词时间与灵机一动，显示可选词数
+function applyModeSettingsUI(ydigOn) {
+  const guessRow = document.getElementById('guess-time-row');
+  const wordCountRow = document.getElementById('word-count-row');
+  const cleverRow = document.getElementById('clever-idea-row');
+  if (guessRow) guessRow.style.display = (ydigOn || !state.isOwner) ? 'none' : '';
+  if (wordCountRow) wordCountRow.style.display = (ydigOn && state.isOwner) ? '' : 'none';
+  if (cleverRow) cleverRow.style.display = (ydigOn || !state.isOwner) ? 'none' : '';
+  // 非房主的模式提示
+  const cleverHint = document.getElementById('clever-idea-hint');
+  if (cleverHint && ydigOn) cleverHint.style.display = 'none';
+  const ydigNonOwner = document.getElementById('ydig-nonowner-hint');
+  if (ydigNonOwner) ydigNonOwner.style.display = (ydigOn && !state.isOwner) ? '' : 'none';
+  const nwcRow = document.getElementById('nword-count-row');
+  if (nwcRow) nwcRow.style.display = (ydigOn && !state.isOwner) ? '' : 'none';
+  const nGuessNote = document.getElementById('nguess-mode-wordcount');
+  if (nGuessNote) nGuessNote.style.display = (ydigOn && !state.isOwner) ? '' : 'none';
 }
 
 function submitGuess() {
@@ -254,6 +330,20 @@ function setupSubmit() {
   dom.guessInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') submitGuess();
   });
+  // 你画我猜：猜词输入
+  function sendYdigGuess() {
+    if (state.mode !== 'ydig' || state.ydigDraw) return;
+    const word = dom.ydigGuessInput.value.trim();
+    if (!word) return;
+    socket.emit('ydig_guess', { word });
+    dom.ydigGuessInput.value = '';
+  }
+  if (dom.ydigGuessSend) dom.ydigGuessSend.addEventListener('click', sendYdigGuess);
+  if (dom.ydigGuessInput) {
+    dom.ydigGuessInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') sendYdigGuess();
+    });
+  }
 }
 
 function setupBackToLobby() {
@@ -398,6 +488,19 @@ function startDrawing(e) {
   const pos = getCanvasPos(e);
   lastX = pos.x;
   lastY = pos.y;
+  if (state.mode === 'ydig' && state.ydigDraw) {
+    // 你画我猜：实时同步笔画开始
+    state.ydigStrokeBuffer = [];
+    state.ydigLastFlush = 0;
+    socket.emit('ydig_draw_event', {
+      t: 'begin',
+      color: selectedColor,
+      size: brushWidth,
+      eraser: isEraser,
+      x: pos.x,
+      y: pos.y
+    });
+  }
 }
 
 function draw(e) {
@@ -414,11 +517,28 @@ function draw(e) {
   ctx.globalCompositeOperation = 'source-over';
   lastX = pos.x;
   lastY = pos.y;
+  if (state.mode === 'ydig' && state.ydigDraw) {
+    // 你画我猜：累积笔画点，按帧节流批量发送
+    state.ydigStrokeBuffer.push([pos.x, pos.y]);
+    const now = Date.now();
+    if (now - (state.ydigLastFlush || 0) >= 33) flushYdigStroke();
+  }
 }
 
 function stopDrawing(e) {
   if (e) e.preventDefault();
   isDrawing = false;
+  if (state.mode === 'ydig' && state.ydigDraw) {
+    flushYdigStroke();
+    socket.emit('ydig_draw_event', { t: 'end' });
+  }
+}
+
+function flushYdigStroke() {
+  if (!state.ydigStrokeBuffer || state.ydigStrokeBuffer.length === 0) return;
+  socket.emit('ydig_draw_event', { t: 'stroke', pts: state.ydigStrokeBuffer });
+  state.ydigStrokeBuffer = [];
+  state.ydigLastFlush = Date.now();
 }
 
 function setupCanvasEvents() {
@@ -525,6 +645,190 @@ function clearCanvas() {
   if (!ctx) return;
   ctx.fillStyle = 'white';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
+  if (state.mode === 'ydig' && state.ydigDraw) {
+    socket.emit('ydig_draw_event', { t: 'clear' });
+    uploadYdigSnapshot();
+  }
+}
+
+// ================================================================
+//   你画我猜：观众画布（实时重放）与画手快照
+// ================================================================
+const ydigCanvas = dom.ydigCanvas;
+let ydigCtx = null;
+let ydigLastPt = null;
+const YDIG_CANVAS_W = 960;
+const YDIG_CANVAS_H = 640;
+
+function initYdigCanvas() {
+  if (!ydigCanvas) return;
+  if (!ydigCtx) ydigCtx = ydigCanvas.getContext('2d');
+  if (ydigCanvas.width !== YDIG_CANVAS_W || ydigCanvas.height !== YDIG_CANVAS_H) {
+    ydigCanvas.width = YDIG_CANVAS_W;
+    ydigCanvas.height = YDIG_CANVAS_H;
+  }
+  clearYdigCanvas();
+}
+
+function clearYdigCanvas() {
+  if (!ydigCtx) return;
+  ydigCtx.globalCompositeOperation = 'source-over';
+  ydigCtx.fillStyle = 'white';
+  ydigCtx.fillRect(0, 0, YDIG_CANVAS_W, YDIG_CANVAS_H);
+  ydigLastPt = null;
+}
+
+function replayYdigEvent(data) {
+  if (!ydigCtx || !data) return;
+  const t = data.t;
+  if (t === 'clear') {
+    clearYdigCanvas();
+  } else if (t === 'begin') {
+    ydigCtx.beginPath();
+    ydigCtx.moveTo(data.x, data.y);
+    ydigCtx.strokeStyle = data.eraser ? '#ffffff' : (data.color || '#000000');
+    ydigCtx.lineWidth = data.size || 2.5;
+    ydigCtx.lineCap = 'round';
+    ydigCtx.lineJoin = 'round';
+    ydigCtx.globalCompositeOperation = data.eraser ? 'destination-out' : 'source-over';
+    ydigLastPt = [data.x, data.y];
+  } else if (t === 'stroke' && Array.isArray(data.pts) && data.pts.length > 0) {
+    ydigCtx.beginPath();
+    if (ydigLastPt) ydigCtx.moveTo(ydigLastPt[0], ydigLastPt[1]);
+    else ydigCtx.moveTo(data.pts[0][0], data.pts[0][1]);
+    for (const p of data.pts) ydigCtx.lineTo(p[0], p[1]);
+    ydigCtx.stroke();
+    ydigLastPt = data.pts[data.pts.length - 1];
+  } else if (t === 'end') {
+    ydigCtx.globalCompositeOperation = 'source-over';
+    ydigLastPt = null;
+  }
+}
+
+function drawYdigSnapshot(imageData) {
+  if (!ydigCtx) return;
+  const img = new Image();
+  img.onload = () => {
+    ydigCtx.globalCompositeOperation = 'source-over';
+    ydigCtx.clearRect(0, 0, YDIG_CANVAS_W, YDIG_CANVAS_H);
+    ydigCtx.drawImage(img, 0, 0, YDIG_CANVAS_W, YDIG_CANVAS_H);
+  };
+  img.src = imageData;
+}
+
+function uploadYdigSnapshot() {
+  if (state.mode !== 'ydig' || !state.ydigDraw || !canvas) return;
+  socket.emit('ydig_snapshot', { image: canvas.toDataURL('image/jpeg', 0.7) });
+}
+
+function startYdigSnapshotTimer() {
+  stopYdigSnapshotTimer();
+  state.ydigSnapshotTimer = setInterval(uploadYdigSnapshot, 5000);
+}
+
+function stopYdigSnapshotTimer() {
+  if (state.ydigSnapshotTimer) {
+    clearInterval(state.ydigSnapshotTimer);
+    state.ydigSnapshotTimer = null;
+  }
+}
+
+// ================================================================
+//   你画我猜：界面辅助
+// ================================================================
+function showYdigGameUI() {
+  if (dom.gameHeader) dom.gameHeader.classList.add('hidden');
+  dom.drawArea.classList.add('hidden');
+  dom.guessArea.classList.add('hidden');
+  dom.ydigArea.classList.remove('hidden');
+  dom.ydigGuessPanel.classList.remove('hidden');
+  dom.ydigViewer.classList.add('hidden');
+  dom.ydigDrawerTip.classList.add('hidden');
+  dom.ydigRoundInfo.textContent = '';
+  dom.ydigStatusText.textContent = '准备中...';
+  if (dom.ydigTimer) dom.ydigTimer.textContent = '';
+  if (dom.ydigGuessInput) dom.ydigGuessInput.disabled = false;
+  dom.ydigHintOverlay.classList.add('hidden');
+  dom.ydigWordSelectOverlay.classList.add('hidden');
+  dom.voteOverlay.classList.add('hidden');
+}
+
+function showClassicGameUI() {
+  if (dom.gameHeader) dom.gameHeader.classList.remove('hidden');
+  dom.ydigArea.classList.add('hidden');
+  dom.ydigGuessPanel.classList.add('hidden');
+  dom.ydigHintOverlay.classList.add('hidden');
+  dom.ydigWordSelectOverlay.classList.add('hidden');
+  if (dom.drawWordDisplay) dom.drawWordDisplay.style.display = '';
+  if (dom.btnSubmitDrawing) dom.btnSubmitDrawing.style.display = '';
+}
+
+function showYdigWordSelect(candidates, timeout, round, totalRounds) {
+  if (dom.ydigWordSelectTip) dom.ydigWordSelectTip.textContent = `第 ${round}/${totalRounds} 轮，你是画手！从 ${candidates.length} 个候选词中选一个来画`;
+  dom.ydigWordCandidates.innerHTML = '';
+  candidates.forEach(word => {
+    const btn = document.createElement('button');
+    btn.className = 'word-candidate-btn';
+    btn.textContent = word;
+    btn.addEventListener('click', () => {
+      socket.emit('select_word', { word });
+      dom.ydigWordSelectOverlay.classList.add('hidden');
+    });
+    dom.ydigWordCandidates.appendChild(btn);
+  });
+  dom.ydigWordSelectOverlay.classList.remove('hidden');
+  let remaining = timeout || 10;
+  dom.ydigWordSelectTimer.textContent = '⏱ ' + remaining + 's';
+  clearInterval(dom.ydigWordSelectOverlay.__timer);
+  dom.ydigWordSelectOverlay.__timer = setInterval(() => {
+    remaining--;
+    if (remaining <= 0) {
+      clearInterval(dom.ydigWordSelectOverlay.__timer);
+      dom.ydigWordSelectTimer.textContent = '⏱ 0s';
+    } else {
+      dom.ydigWordSelectTimer.textContent = '⏱ ' + remaining + 's';
+    }
+  }, 1000);
+}
+
+function showYdigHintInput(timeout) {
+  dom.ydigHintInput.value = '';
+  dom.ydigHintOverlay.classList.remove('hidden');
+  let remaining = timeout || 10;
+  dom.ydigHintTimer.textContent = '⏱ ' + remaining + 's';
+  clearInterval(dom.ydigHintOverlay.__timer);
+  dom.ydigHintOverlay.__timer = setInterval(() => {
+    remaining--;
+    if (remaining <= 0) {
+      clearInterval(dom.ydigHintOverlay.__timer);
+      dom.ydigHintTimer.textContent = '⏱ 0s';
+    } else {
+      dom.ydigHintTimer.textContent = '⏱ ' + remaining + 's';
+    }
+  }, 1000);
+  let submitted = false;
+  function submit() {
+    if (submitted || dom.ydigHintOverlay.classList.contains('hidden')) return;
+    submitted = true;
+    socket.emit('submit_hint', { hint: dom.ydigHintInput.value.trim() });
+    clearInterval(dom.ydigHintOverlay.__timer);
+    dom.ydigHintOverlay.classList.add('hidden');
+  }
+  dom.ydigHintSubmit.onclick = submit;
+  dom.ydigHintInput.onkeydown = (e) => { if (e.key === 'Enter') submit(); };
+  setTimeout(submit, (timeout || 10) * 1000);
+}
+
+function addYdigMsg(text, cls) {
+  if (!dom.ydigGuessList) return;
+  const div = document.createElement('div');
+  div.className = 'ydig-msg' + (cls ? ' ' + cls : '');
+  div.textContent = text; // textContent 注入，天然防 XSS
+  dom.ydigGuessList.appendChild(div);
+  dom.ydigGuessList.scrollTop = dom.ydigGuessList.scrollHeight;
+  while (dom.ydigGuessList.children.length > 200) {
+    dom.ydigGuessList.removeChild(dom.ydigGuessList.firstChild);
+  }
 }
 
 function getCanvasDataURL() {
@@ -556,9 +860,11 @@ function startTimer(duration, onEnd) {
       stopTimer();
       dom.timerDisplay.textContent = '0s';
       dom.voteTimer.textContent = '0s';
+      if (dom.ydigTimer) dom.ydigTimer.textContent = '0s';
       if (onEnd) onEnd();
     } else {
       dom.timerDisplay.textContent = remaining + 's';
+      if (dom.ydigTimer) dom.ydigTimer.textContent = remaining + 's';
       // 同步更新投票弹窗内的倒计时和进度条
       if (!dom.voteOverlay.classList.contains('hidden')) {
         dom.voteTimer.textContent = remaining + 's';
@@ -582,6 +888,7 @@ function stopTimer() {
 function updateTimerDisplay() {
   const remaining = Math.max(0, Math.ceil((state.timerEnd - Date.now()) / 1000));
   dom.timerDisplay.textContent = remaining + 's';
+  if (dom.ydigTimer) dom.ydigTimer.textContent = remaining + 's';
 }
 
 // ================================================================
@@ -781,13 +1088,18 @@ function connectSocket() {
 
   // ---- 游戏开始 ----
   socket.on('game_started', (data) => {
-    state.K = data.K;
-    state.totalRounds = data.K * 2;
+    state.mode = data.mode === 'ydig' ? 'ydig' : 'classic';
+    state.K = data.K || 0;
+    state.totalRounds = state.mode === 'ydig' ? (data.totalRounds || 0) : data.K * 2;
     state.round = 0;
     state.submitted = false;
     state.reviewChains = [];
+    state.ydigDraw = false;
+    stopYdigSnapshotTimer();
     dom.wordSelectOverlay.classList.add('hidden');
     dom.cleverIdeaOverlay.classList.add('hidden');
+    dom.ydigHintOverlay.classList.add('hidden');
+    dom.ydigWordSelectOverlay.classList.add('hidden');
     // 重置灵机一动和选词区域显示
     const ciArea = document.getElementById('clever-input-area');
     if (ciArea) ciArea.style.display = '';
@@ -800,7 +1112,181 @@ function connectSocket() {
       localStorage.setItem('playerListBtnPos', JSON.stringify({ left: window.innerWidth - 135, top: 60 }));
     }
     showPage('game');
-    showToast(`🎮 游戏开始！共 ${state.totalRounds} 轮`);
+    if (state.mode === 'ydig') {
+      showYdigGameUI();
+      showToast(`🎨 你画我猜开始！共 ${state.totalRounds} 轮，大家轮流当画手`);
+    } else {
+      showClassicGameUI();
+      showToast(`🎮 游戏开始！共 ${state.totalRounds} 轮`);
+    }
+  });
+
+  // ---- 你画我猜 ----
+  socket.on('ydig_word_select', (data) => {
+    if (state.mode !== 'ydig') return;
+    showYdigWordSelect(data.candidates, data.timeout || 10, data.round, data.totalRounds);
+    startTimer(data.timeout || 10, () => {
+      if (data.candidates[0]) socket.emit('select_word', { word: data.candidates[0] });
+      dom.ydigWordSelectOverlay.classList.add('hidden');
+    });
+  });
+
+  socket.on('ydig_hint_input', (data) => {
+    if (state.mode !== 'ydig') return;
+    showYdigHintInput(data.timeout || 10);
+  });
+
+  socket.on('ydig_round_start', (data) => {
+    if (state.mode !== 'ydig') return;
+    stopTimer();
+    state.ydigRound = data.round;
+    state.ydigTotalRounds = data.totalRounds;
+    state.ydigDrawerId = data.drawerId;
+    state.ydigHint = data.hint || '';
+    state.ydigWordLength = data.wordLength || 0;
+    state.ydigDraw = data.drawerId === state.myId;
+    dom.ydigRoundInfo.textContent = `第 ${data.round}/${data.totalRounds} 轮`;
+    dom.ydigStatusText.textContent = `🎨 ${data.drawer} 正在作画 · 答案 ${data.wordLength} 个字${data.hint ? ` · 提示：${data.hint}` : ''}`;
+    // 每轮重置：清空猜词流与观众画布
+    dom.ydigGuessList.innerHTML = '';
+    initYdigCanvas();
+    clearYdigCanvas();
+    addYdigMsg(`答案 ${data.wordLength} 个字${data.hint ? `，提示：${data.hint}` : ''}`, 'system');
+    dom.ydigDrawerTip.classList.add('hidden');
+    if (state.ydigDraw) {
+      // 画手：显示作画区（答案由 ydig_draw_start 下发）
+      dom.ydigViewer.classList.add('hidden');
+      dom.drawArea.classList.remove('hidden');
+      dom.drawWordDisplay.classList.add('hidden');
+      dom.btnSubmitDrawing.style.display = 'none';
+      dom.drawWaiting.classList.add('hidden');
+      dom.ydigGuessInput.disabled = true;
+    } else {
+      // 观众：只读画布 + 猜词
+      dom.ydigViewer.classList.remove('hidden');
+      dom.drawArea.classList.add('hidden');
+      dom.ydigGuessInput.disabled = false;
+    }
+    startTimer(data.drawTime || 60, () => {});
+  });
+
+  socket.on('ydig_draw_start', (data) => {
+    if (state.mode !== 'ydig' || state.myId !== state.ydigDrawerId) return;
+    state.ydigWord = data.word || '';
+    // 固定逻辑尺寸画布，避免不同设备画布大小不一致；显示尺寸由 CSS 适配
+    canvas.width = YDIG_CANVAS_W;
+    canvas.height = YDIG_CANVAS_H;
+    if (ctx) {
+      ctx.fillStyle = 'white';
+      ctx.fillRect(0, 0, YDIG_CANVAS_W, YDIG_CANVAS_H);
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.lineWidth = brushWidth;
+      ctx.globalCompositeOperation = 'source-over';
+    }
+    dom.ydigDrawWord.textContent = state.ydigWord;
+    dom.ydigDrawerTip.classList.remove('hidden');
+    dom.ydigViewer.classList.add('hidden');
+    dom.drawArea.classList.remove('hidden');
+    dom.drawWordDisplay.classList.add('hidden');
+    dom.btnSubmitDrawing.style.display = 'none';
+    dom.drawWaiting.classList.add('hidden');
+    dom.ydigGuessInput.disabled = true;
+    startYdigSnapshotTimer();
+    uploadYdigSnapshot();
+    startTimer(data.drawTime || 60, () => {});
+  });
+
+  socket.on('ydig_draw_event', (data) => {
+    if (state.mode !== 'ydig' || state.ydigDraw) return; // 画手本地已绘制，不重放
+    replayYdigEvent(data);
+  });
+
+  socket.on('ydig_snapshot', (data) => {
+    if (state.mode !== 'ydig' || state.ydigDraw) return;
+    if (data && data.image) drawYdigSnapshot(data.image);
+  });
+
+  socket.on('ydig_guess_result', (data) => {
+    if (state.mode !== 'ydig') return;
+    if (data.correct) {
+      addYdigMsg(`🎉 ${data.nickname} 猜对了！得 ${data.score} 分（画手 +${data.drawerScore} 分）`, 'correct');
+    } else {
+      addYdigMsg(`❌ ${data.nickname} 猜"${data.word}"，猜错了`, 'wrong');
+    }
+  });
+
+  socket.on('ydig_round_end', (data) => {
+    if (state.mode !== 'ydig') return;
+    stopTimer();
+    stopYdigSnapshotTimer();
+    state.ydigDraw = false;
+    dom.ydigDrawerTip.classList.add('hidden');
+    dom.drawArea.classList.add('hidden');
+    dom.ydigGuessInput.disabled = true;
+    // 每轮结束清空猜词流（答案在评价弹窗中展示）
+    dom.ydigGuessList.innerHTML = '';
+    addYdigMsg(`✅ 本轮结束，答案是「${data.word}」`, 'system');
+  });
+
+  socket.on('ydig_state', (data) => {
+    // 断线重连：恢复你画我猜当前阶段
+    if (state.mode !== 'ydig') state.mode = 'ydig';
+    state.ydigRound = data.round;
+    state.ydigTotalRounds = data.totalRounds;
+    state.ydigDrawerId = data.drawerId;
+    state.ydigHint = data.hint || '';
+    state.ydigWordLength = data.wordLength || 0;
+    dom.ydigRoundInfo.textContent = `第 ${data.round}/${data.totalRounds} 轮`;
+    dom.ydigStatusText.textContent = `🎨 ${data.drawer} 正在作画 · 答案 ${data.wordLength} 个字${data.hint ? ` · 提示：${data.hint}` : ''}`;
+    initYdigCanvas();
+    clearYdigCanvas();
+    dom.ydigGuessList.innerHTML = '';
+    (data.guesses || []).forEach(g => {
+      if (g.correct) addYdigMsg(`🎉 ${g.nickname} 猜对了！得 ${g.score} 分`, 'correct');
+      else addYdigMsg(`❌ ${g.nickname} 猜"${g.word}"，猜错了`, 'wrong');
+    });
+    if (data.state === 'ydig_word_select' && data.isDrawer && data.candidates) {
+      showYdigWordSelect(data.candidates, 10, data.round, data.totalRounds);
+      startTimer(data.remaining || 10, () => {
+        if (data.candidates[0]) socket.emit('select_word', { word: data.candidates[0] });
+        dom.ydigWordSelectOverlay.classList.add('hidden');
+      });
+    } else if (data.state === 'ydig_hint' && data.isDrawer) {
+      showYdigHintInput(data.remaining || 10);
+    } else if (data.state === 'ydig_draw') {
+      state.ydigDraw = !!data.isDrawer;
+      if (data.isDrawer) {
+        state.ydigWord = data.word || '';
+        canvas.width = YDIG_CANVAS_W;
+        canvas.height = YDIG_CANVAS_H;
+        if (ctx) {
+          ctx.fillStyle = 'white';
+          ctx.fillRect(0, 0, YDIG_CANVAS_W, YDIG_CANVAS_H);
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+        }
+        dom.ydigDrawWord.textContent = state.ydigWord;
+        dom.ydigDrawerTip.classList.remove('hidden');
+        dom.drawArea.classList.remove('hidden');
+        dom.drawWordDisplay.classList.add('hidden');
+        dom.btnSubmitDrawing.style.display = 'none';
+        dom.drawWaiting.classList.add('hidden');
+        dom.ydigViewer.classList.add('hidden');
+        startYdigSnapshotTimer();
+        if (data.snapshot) {
+          const img = new Image();
+          img.onload = () => { if (ctx) ctx.drawImage(img, 0, 0, canvas.width, canvas.height); };
+          img.src = data.snapshot;
+        }
+      } else {
+        dom.ydigViewer.classList.remove('hidden');
+        dom.drawArea.classList.add('hidden');
+        if (data.snapshot) drawYdigSnapshot(data.snapshot);
+      }
+      dom.ydigGuessInput.disabled = !!data.isDrawer;
+      startTimer(data.remaining || 30, () => {});
+    }
   });
 
   // ---- 选词 ----
@@ -1098,7 +1584,11 @@ function connectSocket() {
 
   socket.on('chain_end', (data) => {
     dom.voteOverlay.classList.add('hidden');
-    showToast(`✅ 第 ${data.chainIndex+1} 条链条回顾完成`);
+    if (data.mode === 'ydig') {
+      showToast(`✅ 第 ${data.chainIndex+1} 轮评价完成`);
+    } else {
+      showToast(`✅ 第 ${data.chainIndex+1} 条链条回顾完成`);
+    }
   });
 
   // ---- 游戏结束 ----
@@ -1106,13 +1596,25 @@ function connectSocket() {
     showPage('result');
     dom.resultA.textContent = data.titles.accuracyBest.length > 0 ? data.titles.accuracyBest.join('、') : '无';
     dom.resultB.textContent = data.titles.artworkBest.length > 0 ? data.titles.artworkBest.join('、') : '无';
+    // 你画我猜：MVP 显示
+    const mvpSection = document.getElementById('result-mvp-section');
+    const mvpEl = document.getElementById('result-mvp');
+    if (data.mode === 'ydig' && mvpSection && mvpEl) {
+      mvpSection.style.display = '';
+      mvpEl.textContent = data.titles.mvp && data.titles.mvp.length > 0 ? data.titles.mvp.join('、') : '无';
+    } else if (mvpSection) {
+      mvpSection.style.display = 'none';
+    }
     // 展示每位玩家的得分（scoreA/scoreB 为 {昵称: 分数}）
     const scoreA = data.scoreA || {};
     const scoreB = data.scoreB || {};
-    const allNames = [...new Set([...Object.keys(scoreA), ...Object.keys(scoreB)])];
+    const scoreMVP = data.scoreMVP || {};
+    const allNames = [...new Set([...Object.keys(scoreA), ...Object.keys(scoreB), ...Object.keys(scoreMVP)])];
     if (allNames.length > 0) {
       dom.resultScores.textContent = allNames
-        .map(n => `${n}：猜词 ${scoreA[n] || 0} 分 · 画作 ${scoreB[n] || 0} 分`)
+        .map(n => data.mode === 'ydig'
+          ? `${n}：猜词 ${scoreA[n] || 0} 分 · 画作 ${scoreB[n] || 0} 分 · 总分 ${scoreMVP[n] || 0} 分`
+          : `${n}：猜词 ${scoreA[n] || 0} 分 · 画作 ${scoreB[n] || 0} 分`)
         .join('　');
     } else {
       dom.resultScores.textContent = '总分详情已记录';
@@ -1125,6 +1627,11 @@ function connectSocket() {
     dom.voteOverlay.classList.add('hidden');
     dom.drawArea.classList.add('hidden');
     dom.guessArea.classList.add('hidden');
+    dom.ydigArea.classList.add('hidden');
+    dom.ydigGuessPanel.classList.add('hidden');
+    dom.ydigHintOverlay.classList.add('hidden');
+    dom.ydigWordSelectOverlay.classList.add('hidden');
+    stopYdigSnapshotTimer();
   });
 
   socket.on('player_returned', (data) => {
@@ -1134,6 +1641,7 @@ function connectSocket() {
 
   socket.on('back_to_room_ok', () => {
     // 重置所有游戏状态
+    state.mode = 'classic';
     state.K = 0;
     state.totalRounds = 0;
     state.round = 0;
@@ -1142,6 +1650,8 @@ function connectSocket() {
     state.submitted = false;
     state.reviewChains = [];
     state.chainIndex = null;
+    state.ydigDraw = false;
+    stopYdigSnapshotTimer();
     showPage('lobby');
     showToast('🔄 已返回房间');
   });
@@ -1158,11 +1668,18 @@ function connectSocket() {
     state.totalRounds = data.totalRounds;
     state.round = data.currentRound;
     state.config = data.config;
+    state.mode = data.mode === 'ydig' ? 'ydig' : 'classic';
+    stopYdigSnapshotTimer();
     localStorage.setItem('draw_roomId', data.roomId);
     state._reconnecting = false;
     const b = document.getElementById('reconnect-banner');
     if (b) b.classList.add('hidden');
     showPage('game');
+    if (state.mode === 'ydig') {
+      showYdigGameUI();
+    } else {
+      showClassicGameUI();
+    }
     showToast(`🔄 已重连到游戏中（第 ${data.currentRound+1}/${data.totalRounds} 轮）`);
     // 隐藏所有游戏子界面，等待服务端发送对应事件恢复
     dom.drawArea.classList.add('hidden');
@@ -1171,6 +1688,8 @@ function connectSocket() {
     dom.guessWaiting.classList.add('hidden');
     dom.wordSelectOverlay.classList.add('hidden');
     dom.voteOverlay.classList.add('hidden');
+    dom.ydigHintOverlay.classList.add('hidden');
+    dom.ydigWordSelectOverlay.classList.add('hidden');
   });
 
   // ---- 聊天 ----
@@ -1381,11 +1900,18 @@ function showVoteUI(data) {
   let voted = false;
 
   if (data.type === 'accuracy') {
-    dom.voteTitle.textContent = '第 ' + (data.chainIndex+1) + ' 条 · 正误投票';
-    // 初始词和最终猜词
+    const isYdig = info.mode === 'ydig' || data.mode === 'ydig';
+    dom.voteTitle.textContent = isYdig
+      ? `第 ${data.chainIndex+1} 轮 · 评价画手 ${info.drawer}`
+      : '第 ' + (data.chainIndex+1) + ' 条 · 正误投票';
+    // 初始词和最终猜词 / 你画我猜：答案与提示
     const p = document.createElement('p');
     p.style.marginBottom = '12px';
-    p.innerHTML = `初始词：<strong>${escapeHtml(info.initWord)}</strong> &nbsp;→&nbsp; 最终猜词：<strong>${escapeHtml(info.finalGuess)}</strong>`;
+    if (isYdig) {
+      p.innerHTML = `画的是：<strong>${escapeHtml(info.word)}</strong>${info.hint ? `（提示：${escapeHtml(info.hint)}）` : ''} · ${escapeHtml(info.drawer)} 的画作`;
+    } else {
+      p.innerHTML = `初始词：<strong>${escapeHtml(info.initWord)}</strong> &nbsp;→&nbsp; 最终猜词：<strong>${escapeHtml(info.finalGuess)}</strong>`;
+    }
     dom.voteBody.appendChild(p);
     // 玩家列表
     const listDiv = document.createElement('div');
@@ -1781,6 +2307,18 @@ function updateLobbyUI(data) {
         hint.classList.add('hidden');
       }
     }
+    // 你画我猜模式与可选词数
+    const ydigCheck = document.getElementById('ydig-mode-checkbox');
+    if (ydigCheck) ydigCheck.checked = !!data.config.youDrawIGuess;
+    const ydigLabel = document.getElementById('ydig-mode-label');
+    if (ydigLabel) ydigLabel.textContent = data.config.youDrawIGuess ? '你画我猜已开启' : '你画我猜';
+    const wcVal = Math.max(1, Math.min(6, parseInt(data.config.wordCount) || 3));
+    const wcSlider = document.getElementById('word-count-slider');
+    const wcDisplay = document.getElementById('word-count-display');
+    if (wcSlider) wcSlider.value = wcVal;
+    if (wcDisplay) wcDisplay.textContent = wcVal;
+    const nwc = document.getElementById('nword-count');
+    if (nwc) nwc.textContent = wcVal;
     const ndt = document.getElementById('ndraw-time');
     const ngt = document.getElementById('nguess-time');
     const nwl = document.getElementById('nwordlib');
@@ -1807,6 +2345,7 @@ function updateLobbyUI(data) {
   dom.settingsPanel.classList.remove('hidden');
   document.querySelectorAll('.owner-only-control').forEach(el => el.style.display = state.isOwner ? '' : 'none');
   document.querySelectorAll('.nonowner-text').forEach(el => el.style.display = state.isOwner ? 'none' : '');
+  applyModeSettingsUI(!!(data.config && data.config.youDrawIGuess));
   // 恢复聊天历史（重新进入房间 / 刷新后可见）
   if (data.chat) renderChatHistory(data.chat);
   if (state.isOwner) {
@@ -1970,6 +2509,7 @@ function setupPlayerList() {
 function init() {
   connectSocket();
   initCanvas();
+  initYdigCanvas();
   initAvatarSelector();
   setupChat();
   setupPlayerList();
