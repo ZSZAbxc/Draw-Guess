@@ -384,6 +384,7 @@ button:disabled { opacity: .5; cursor: not-allowed; filter: grayscale(.5); }
   width: 100%; height: 100%;
   max-width: 92vw; max-height: 78vh;
   object-fit: contain;
+  touch-action: none; /* 画布上触摸不触发页面滚动，保证作画跟手 */
   box-shadow: 0 16px 48px rgba(0,0,0,.6);
 }
 /* 你画我猜：画手画布固定 3:2 逻辑比例，避免被容器拉伸导致笔迹与落点错位 */
@@ -439,6 +440,7 @@ button:disabled { opacity: .5; cursor: not-allowed; filter: grayscale(.5); }
   width: auto; height: auto;
   max-width: 100%; max-height: 70vh;
   aspect-ratio: 3 / 2; object-fit: fill; flex-shrink: 0;
+  touch-action: none;
   box-shadow: 0 16px 48px rgba(0,0,0,.6);
 }
 /* 猜词面板：固定右下，框内默认展示最后几条，可上滚查看历史 */
@@ -809,6 +811,10 @@ button:disabled { opacity: .5; cursor: not-allowed; filter: grayscale(.5); }
   .chat-box input { font-size: 18px; }
   .chat-msg-list { font-size: 16px; }
   .chat-msg { font-size: 18px; }
+  /* 手机端允许整页上下滚动，避免作画区被压缩 */
+  #page-game { -webkit-overflow-scrolling: touch; }
+  #page-game > * { flex-shrink: 0; }
+  #ydig-area { flex: 0 0 auto; overflow: visible; }
   #ydig-guess-panel { width: 300px; right: 8px; bottom: 8px; }
   #ydig-guess-list { height: 180px; }
   .modal { padding: 30px; }

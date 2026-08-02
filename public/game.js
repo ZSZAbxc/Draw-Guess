@@ -116,6 +116,7 @@ dom.ydigCanvas         = $('ydig-canvas');
 dom.ydigGuessPanel     = $('ydig-guess-panel');
 dom.ydigGuessList      = $('ydig-guess-list');
 dom.ydigGuessInput     = $('ydig-guess-input');
+dom.ydigGuessInputRow  = $('ydig-guess-input-row');
 dom.ydigGuessSend      = $('ydig-guess-send');
 dom.ydigWordSelectOverlay = $('ydig-word-select-overlay');
 dom.ydigWordCandidates = $('ydig-word-candidates');
@@ -756,6 +757,7 @@ function showYdigGameUI() {
   dom.ydigStatusText.textContent = '准备中...';
   if (dom.ydigTimer) dom.ydigTimer.textContent = '';
   if (dom.ydigGuessInput) dom.ydigGuessInput.disabled = false;
+  if (dom.ydigGuessInputRow) dom.ydigGuessInputRow.style.display = ''; // 角色由后续事件配置
   dom.ydigHintOverlay.classList.add('hidden');
   dom.ydigWordSelectOverlay.classList.add('hidden');
   dom.voteOverlay.classList.add('hidden');
@@ -767,6 +769,7 @@ function showClassicGameUI() {
   dom.ydigGuessPanel.classList.add('hidden');
   dom.ydigHintOverlay.classList.add('hidden');
   dom.ydigWordSelectOverlay.classList.add('hidden');
+  if (dom.ydigGuessInputRow) dom.ydigGuessInputRow.style.display = '';
   if (canvas) canvas.classList.remove('ydig-draw-canvas');
   if (dom.drawWordDisplay) dom.drawWordDisplay.style.display = '';
   if (dom.btnSubmitDrawing) dom.btnSubmitDrawing.style.display = '';
@@ -1170,11 +1173,14 @@ function connectSocket() {
       dom.btnSubmitDrawing.style.display = 'none';
       dom.drawWaiting.classList.add('hidden');
       dom.ydigGuessInput.disabled = true;
+      // 画手看不到猜词输入框（仍能看到其他人的猜词消息）
+      if (dom.ydigGuessInputRow) dom.ydigGuessInputRow.style.display = 'none';
     } else {
       // 观众：只读画布 + 猜词
       dom.ydigViewer.classList.remove('hidden');
       dom.drawArea.classList.add('hidden');
       dom.ydigGuessInput.disabled = false;
+      if (dom.ydigGuessInputRow) dom.ydigGuessInputRow.style.display = '';
     }
     startTimer(data.drawTime || 60, () => {});
   });
@@ -1202,6 +1208,7 @@ function connectSocket() {
     dom.btnSubmitDrawing.style.display = 'none';
     dom.drawWaiting.classList.add('hidden');
     dom.ydigGuessInput.disabled = true;
+    if (dom.ydigGuessInputRow) dom.ydigGuessInputRow.style.display = 'none';
     startYdigSnapshotTimer();
     uploadYdigSnapshot();
     startTimer(data.drawTime || 60, () => {});
@@ -1287,6 +1294,7 @@ function connectSocket() {
         dom.btnSubmitDrawing.style.display = 'none';
         dom.drawWaiting.classList.add('hidden');
         dom.ydigViewer.classList.add('hidden');
+        if (dom.ydigGuessInputRow) dom.ydigGuessInputRow.style.display = 'none';
         startYdigSnapshotTimer();
         if (data.snapshot) {
           const img = new Image();
@@ -1296,6 +1304,7 @@ function connectSocket() {
       } else {
         dom.ydigViewer.classList.remove('hidden');
         dom.drawArea.classList.add('hidden');
+        if (dom.ydigGuessInputRow) dom.ydigGuessInputRow.style.display = '';
         if (data.snapshot) drawYdigSnapshot(data.snapshot);
       }
       dom.ydigGuessInput.disabled = !!data.isDrawer;
