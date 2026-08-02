@@ -356,17 +356,14 @@ function setupBackToLobby() {
   dom.btnCopyRoomId.addEventListener('click', () => {
     const roomId = state.roomId;
     if (!roomId) return;
-    navigator.clipboard.writeText(roomId).then(() => {
-      showToast('✅ 已复制房间号：' + roomId);
-    }).catch(() => {
-      const ta = document.createElement('textarea');
-      ta.value = roomId;
-      document.body.appendChild(ta);
-      ta.select();
-      document.execCommand('copy');
-      document.body.removeChild(ta);
-      showToast('✅ 已复制房间号：' + roomId);
-    });
+    const onOk = () => showToast('✅ 已复制房间号：' + roomId);
+    // 生产环境为 HTTP，navigator.clipboard 在非安全上下文中不存在，
+    // 直接调用会同步抛错导致兜底失效，必须先做能力检测
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(roomId).then(onOk).catch(() => copyRoomIdFallback(roomId, onOk));
+    } else {
+      copyRoomIdFallback(roomId, onOk);
+    }
   });
   dom.btnLeaveRoom.addEventListener('click', () => {
     socket.emit('leave_room');
@@ -374,6 +371,26 @@ function setupBackToLobby() {
   dom.btnBackToLobby.addEventListener('click', () => {
     socket.emit('back_to_lobby');
   });
+}
+
+// 复制兜底：隐藏 textarea + execCommand（兼容 HTTP/老浏览器/移动端）
+function copyRoomIdFallback(text, onOk) {
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0;';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    ta.setSelectionRange(0, ta.value.length);
+    const done = document.execCommand('copy');
+    document.body.removeChild(ta);
+    if (done) onOk();
+    else showToast('⚠️ 复制失败，房间号：' + text);
+  } catch (e) {
+    showToast('⚠️ 复制失败，房间号：' + text);
+  }
 }
 function initCanvas() {
   if (!canvas) return;
