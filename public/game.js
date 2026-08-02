@@ -1551,6 +1551,7 @@ function connectSocket() {
       data.voterStatus.forEach(vs => {
         const row = document.getElementById('voter-row-' + vs.playerId);
         if (!row) return;
+        if (row.dataset.isDrawer === '1') return; // 画手行保持"画手"状态
         const isMe = vs.playerId === state.myId;
         let statusText, statusColor;
         if (vs.vote === 'correct') { statusText = '✅ 确实挺不错的'; statusColor = '#2ecc71'; }
@@ -1911,13 +1912,18 @@ function showReviewStep(data) {
 // ================================================================
 function showVoteUI(data) {
   const info = data.data || {}; // 服务端把内容嵌套在 data.data 中
+  const voteModeYdig = info.mode === 'ydig' || data.mode === 'ydig';
   dom.voteOverlay.classList.remove('hidden');
-  dom.voteProgress.textContent = '已投票 0/' + state.players.length;
+  const totalVoters = voteModeYdig
+    ? Math.max(0, ((info.players && info.players.length) || state.players.length) - 1)
+    : state.players.length;
+  dom.voteProgress.textContent = '已投票 0/' + totalVoters;
   dom.voteBody.innerHTML = '';
   let voted = false;
 
   if (data.type === 'accuracy') {
     const isYdig = info.mode === 'ydig' || data.mode === 'ydig';
+    const isDrawer = isYdig && !!info.drawerId && info.drawerId === state.myId;
     dom.voteTitle.textContent = isYdig
       ? `第 ${data.chainIndex+1} 轮 · 评价画手 ${info.drawer}`
       : '第 ' + (data.chainIndex+1) + ' 条 · 正误投票';
@@ -1940,9 +1946,14 @@ function showVoteUI(data) {
       const row = document.createElement('div');
       row.id = 'voter-row-' + pl.id;
       const isMe = pl.id === state.myId;
+      const isDrawerRow = isYdig && info.drawerId === pl.id;
+      if (isDrawerRow) row.dataset.isDrawer = '1';
       const av = pl.avatar || '😀';
       const lat3 = pl.connected === false ? '' : latencyHtml(pl.latency);
-      row.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><span><span style="font-size:20px;margin-right:4px">${escapeHtml(av)}</span><span style="color:${isMe?'#e94560':'#ccc'}">${isMe?' (你)':''} ${escapeHtml(pl.nickname)}</span>${lat3}</span><span style="color:#f39c12;white-space:nowrap">🤔 思考中</span></div>`;
+      const statusHtml = isDrawerRow
+        ? '<span style="color:#e94560;white-space:nowrap">🎨 画手（不投票）</span>'
+        : '<span style="color:#f39c12;white-space:nowrap">🤔 思考中</span>';
+      row.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><span><span style="font-size:20px;margin-right:4px">${escapeHtml(av)}</span><span style="color:${isMe?'#e94560':'#ccc'}">${isMe?' (你)':''} ${escapeHtml(pl.nickname)}</span>${lat3}</span>${statusHtml}</div>`;
       listDiv.appendChild(row);
     });
     dom.voteBody.appendChild(listDiv);
@@ -1990,7 +2001,15 @@ function showVoteUI(data) {
     };
     btnDiv.appendChild(btnCorrect);
     btnDiv.appendChild(btnIncorrect);
-    dom.voteBody.appendChild(btnDiv);
+    if (isDrawer) {
+      // 画手不能评价自己：隐藏按钮，显示等待提示
+      btnDiv.style.display = 'none';
+      confirmMsg.textContent = '🎨 你是画手，等待大家评价你的画作...';
+      confirmMsg.style.color = '#e94560';
+      confirmMsg.style.display = 'block';
+    } else {
+      dom.voteBody.appendChild(btnDiv);
+    }
 
 
   } else if (data.type === 'artwork') {

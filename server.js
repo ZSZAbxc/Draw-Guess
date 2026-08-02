@@ -1496,6 +1496,7 @@ io.on('connection', (socket) => {
       data: {
         mode: 'ydig',
         drawer: getNickname(room, yd.drawerId),
+        drawerId: yd.drawerId,
         word: yd.word,
         hint: yd.hint,
         wordLength: yd.wordLength,
@@ -1770,6 +1771,7 @@ io.on('connection', (socket) => {
     if (room.state === 'ydig_review') {
       const yd = room.ydig;
       if (!yd || yd.round !== chainIndex) return;
+      if (socket.id === yd.drawerId) return; // 画手不能评价自己
       if (room.votesAccuracy.has(socket.id)) return; // 已投票
       room.votesAccuracy.set(socket.id, vote);
       const voterStatus = room.players.map(p => ({
@@ -1781,13 +1783,13 @@ io.on('connection', (socket) => {
       }));
       io.to(room.id).emit('vote_progress', {
         voted: room.votesAccuracy.size,
-        total: room.players.length,
+        total: room.players.length - 1, // 画手不参与投票
         voterStatus
       });
-      // 全员投完且剩余 >5s 则缩短为 5s
+      // 除画手外全员投完且剩余 >5s 则缩短为 5s
       const elapsed = Date.now() - (room.timerStart || Date.now());
       const remaining = Math.max(0, 20000 - elapsed);
-      if (room.votesAccuracy.size >= room.players.length && room.timer && remaining > 5000) {
+      if (room.votesAccuracy.size >= room.players.length - 1 && room.timer && remaining > 5000) {
         clearRoomTimer(room);
         room.timer = setTimeout(() => handleYdigReviewTimeout(room), 5000);
         io.to(room.id).emit('timer_sync', { remaining: 5 });
@@ -2079,6 +2081,7 @@ io.on('connection', (socket) => {
             data: {
               mode: 'ydig',
               drawer: getNickname(room, yd.drawerId),
+              drawerId: yd.drawerId,
               word: yd.word,
               hint: yd.hint,
               wordLength: yd.wordLength,
