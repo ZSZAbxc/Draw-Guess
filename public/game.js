@@ -46,6 +46,7 @@ const state = {
   ydigSnapshotTimer: null,
   ydigStrokeBuffer: [],
   ydigLastFlush: 0,
+  ydigLastArtwork: '',        // 本轮画作（白底合成），评价阶段展示
 };
 
 // ---- DOM 引用 ----
@@ -742,6 +743,19 @@ function stopYdigSnapshotTimer() {
   }
 }
 
+// 把画布合成到白底后导出 PNG（避免橡皮擦擦出的透明区在深色背景上变黑）
+function canvasToWhiteDataURL(src) {
+  if (!src) return '';
+  const tmp = document.createElement('canvas');
+  tmp.width = src.width;
+  tmp.height = src.height;
+  const tctx = tmp.getContext('2d');
+  tctx.fillStyle = '#ffffff';
+  tctx.fillRect(0, 0, tmp.width, tmp.height);
+  tctx.drawImage(src, 0, 0);
+  return tmp.toDataURL('image/png');
+}
+
 // ================================================================
 //   你画我猜：界面辅助
 // ================================================================
@@ -750,6 +764,7 @@ function showYdigGameUI() {
   dom.drawArea.classList.add('hidden');
   dom.guessArea.classList.add('hidden');
   dom.ydigArea.classList.remove('hidden');
+  dom.ydigArea.classList.remove('ydig-compact');
   dom.ydigGuessPanel.classList.remove('hidden');
   dom.ydigViewer.classList.add('hidden');
   dom.ydigDrawerTip.classList.add('hidden');
@@ -758,6 +773,7 @@ function showYdigGameUI() {
   if (dom.ydigTimer) dom.ydigTimer.textContent = '';
   if (dom.ydigGuessInput) dom.ydigGuessInput.disabled = false;
   if (dom.ydigGuessInputRow) dom.ydigGuessInputRow.style.display = ''; // 角色由后续事件配置
+  state.ydigLastArtwork = '';
   dom.ydigHintOverlay.classList.add('hidden');
   dom.ydigWordSelectOverlay.classList.add('hidden');
   dom.voteOverlay.classList.add('hidden');
@@ -766,6 +782,7 @@ function showYdigGameUI() {
 function showClassicGameUI() {
   if (dom.gameHeader) dom.gameHeader.classList.remove('hidden');
   dom.ydigArea.classList.add('hidden');
+  dom.ydigArea.classList.remove('ydig-compact');
   dom.ydigGuessPanel.classList.add('hidden');
   dom.ydigHintOverlay.classList.add('hidden');
   dom.ydigWordSelectOverlay.classList.add('hidden');
@@ -1157,6 +1174,7 @@ function connectSocket() {
     state.ydigHint = data.hint || '';
     state.ydigWordLength = data.wordLength || 0;
     state.ydigDraw = data.drawerId === state.myId;
+    state.ydigLastArtwork = ''; // 新一轮开始，清空上一轮画作缓存
     dom.ydigRoundInfo.textContent = `第 ${data.round}/${data.totalRounds} 轮`;
     dom.ydigStatusText.textContent = `🎨 ${data.drawer} 正在作画 · 答案 ${data.wordLength} 个字${data.hint ? ` · 提示：${data.hint}` : ''}`;
     // 每轮重置：清空猜词流与观众画布
@@ -1168,6 +1186,7 @@ function connectSocket() {
     dom.ydigDrawerTip.classList.add('hidden');
     if (state.ydigDraw) {
       // 画手：显示作画区（答案由 ydig_draw_start 下发）
+      dom.ydigArea.classList.add('ydig-compact');
       dom.ydigViewer.classList.add('hidden');
       dom.drawArea.classList.remove('hidden');
       dom.drawWordDisplay.classList.add('hidden');
@@ -1178,6 +1197,7 @@ function connectSocket() {
       if (dom.ydigGuessInputRow) dom.ydigGuessInputRow.style.display = 'none';
     } else {
       // 观众：只读画布 + 猜词
+      dom.ydigArea.classList.remove('ydig-compact');
       dom.ydigViewer.classList.remove('hidden');
       dom.drawArea.classList.add('hidden');
       dom.ydigGuessInput.disabled = false;
@@ -1189,6 +1209,7 @@ function connectSocket() {
   socket.on('ydig_draw_start', (data) => {
     if (state.mode !== 'ydig' || state.myId !== state.ydigDrawerId) return;
     state.ydigWord = data.word || '';
+    dom.ydigArea.classList.add('ydig-compact');
     // 固定逻辑尺寸画布，避免不同设备画布大小不一致；显示尺寸由 CSS 适配
     canvas.width = YDIG_CANVAS_W;
     canvas.height = YDIG_CANVAS_H;
@@ -1236,6 +1257,9 @@ function connectSocket() {
 
   socket.on('ydig_round_end', (data) => {
     if (state.mode !== 'ydig') return;
+    // 记录本轮画作（画手用自己画布、观众用重放画布），供评价阶段展示
+    const artSrc = state.ydigDraw ? canvasToWhiteDataURL(canvas) : canvasToWhiteDataURL(ydigCanvas);
+    state.ydigLastArtwork = artSrc || '';
     stopTimer();
     stopYdigSnapshotTimer();
     state.ydigDraw = false;
@@ -1280,6 +1304,7 @@ function connectSocket() {
       state.ydigDraw = !!data.isDrawer;
       if (data.isDrawer) {
         state.ydigWord = data.word || '';
+        dom.ydigArea.classList.add('ydig-compact');
         canvas.width = YDIG_CANVAS_W;
         canvas.height = YDIG_CANVAS_H;
         canvas.classList.add('ydig-draw-canvas');
@@ -1307,6 +1332,7 @@ function connectSocket() {
           img.src = data.snapshot;
         }
       } else {
+        dom.ydigArea.classList.remove('ydig-compact');
         dom.ydigViewer.classList.remove('hidden');
         dom.drawArea.classList.add('hidden');
         if (dom.ydigGuessInputRow) dom.ydigGuessInputRow.style.display = '';
@@ -1314,6 +1340,9 @@ function connectSocket() {
       }
       dom.ydigGuessInput.disabled = !!data.isDrawer;
       startTimer(data.remaining || 30, () => {});
+    } else if (data.state === 'ydig_review') {
+      // 重连到评价阶段：用服务端快照展示本轮画作
+      state.ydigLastArtwork = data.snapshot || '';
     }
   });
 
@@ -1574,6 +1603,16 @@ function connectSocket() {
         const lat4 = latencyHtml(vs.latency);
         row.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><span><span style="font-size:20px;margin-right:4px">${escapeHtml(vs.avatar || '😀')}</span><span style="color:${isMe?'#e94560':'#ccc'}">${isMe?' (你)':''} ${escapeHtml(vs.nickname)}</span>${lat4}</span><span style="color:${statusColor};white-space:nowrap">${statusText}</span></div>`;
       });
+    }
+    // 你画我猜：匿名投票反应（不显示投票者身份）
+    if (data.reaction) {
+      const box = document.getElementById('vote-reactions');
+      if (box) {
+        const el = document.createElement('div');
+        el.className = 'ydig-vote-reaction';
+        el.textContent = data.reaction;
+        box.appendChild(el);
+      }
     }
     // 画作投票：所有人同步显示爱心标记 + 投票者名字
     if (data.votedPlayerId) {
@@ -1941,6 +1980,8 @@ function showVoteUI(data) {
     : state.players.length;
   dom.voteProgress.textContent = '已投票 0/' + totalVoters;
   dom.voteBody.innerHTML = '';
+  const reactionsBox = document.getElementById('vote-reactions');
+  if (reactionsBox) reactionsBox.innerHTML = '';
   let voted = false;
 
   if (data.type === 'accuracy') {
@@ -1958,6 +1999,14 @@ function showVoteUI(data) {
       p.innerHTML = `初始词：<strong>${escapeHtml(info.initWord)}</strong> &nbsp;→&nbsp; 最终猜词：<strong>${escapeHtml(info.finalGuess)}</strong>`;
     }
     dom.voteBody.appendChild(p);
+    // 你画我猜：展示本轮画作，画手也能看到自己的作品
+    if (isYdig && state.ydigLastArtwork) {
+      const art = document.createElement('img');
+      art.src = state.ydigLastArtwork;
+      art.alt = '本轮画作';
+      art.style.cssText = 'display:block;max-width:100%;max-height:32vh;margin:0 auto 12px;border-radius:12px;border:2px solid #555;background:#fff;object-fit:contain;';
+      dom.voteBody.appendChild(art);
+    }
     // 玩家列表
     if (isYdig) {
       // 匿名投票：不显示各玩家投票状态，仅提示匿名

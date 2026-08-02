@@ -420,6 +420,8 @@ button:disabled { opacity: .5; cursor: not-allowed; filter: grayscale(.5); }
   flex: 1; display: flex; flex-direction: column;
   padding: 14px 24px 0; min-width: 0; overflow: hidden;
 }
+/* 画手模式：顶部区域只保留标题+提示，不撑开大片留白，把空间留给画布 */
+#ydig-area.ydig-compact { flex: 0 0 auto; }
 #ydig-header {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
   flex-wrap: wrap; margin-bottom: 10px; font-size: 20px; color: var(--text);
@@ -470,6 +472,10 @@ button:disabled { opacity: .5; cursor: not-allowed; filter: grayscale(.5); }
 .ydig-guess-input-row { display: flex; border-top: 1px solid rgba(255,255,255,.1); }
 #ydig-guess-input { flex: 1; padding: 12px 14px; border: none; background: transparent; color: var(--text); font-size: 18px; min-width: 0; }
 #ydig-guess-send { padding: 12px 18px; font-size: 18px; }
+
+/* 你画我猜：匿名投票反应消息 */
+#vote-reactions { display: flex; flex-direction: column; align-items: center; gap: 4px; margin-top: 10px; }
+.ydig-vote-reaction { font-size: 18px; color: #ddd; animation: chatIn .25s ease both; }
 
 /* --- 等待提示 --- */
 .waiting-msg { text-align: center; padding: 36px; font-size: 26px; color: var(--muted); }

@@ -1777,7 +1777,8 @@ io.on('connection', (socket) => {
       // 匿名投票：不广播谁投了什么，只广播票数进度
       io.to(room.id).emit('vote_progress', {
         voted: room.votesAccuracy.size,
-        total: room.players.length - 1 // 画手不参与投票
+        total: room.players.length - 1, // 画手不参与投票
+        reaction: vote === 'correct' ? '👍确实挺不错的' : '💩差点没缓过来'
       });
       // 除画手外全员投完且剩余 >5s 则缩短为 5s
       const elapsed = Date.now() - (room.timerStart || Date.now());
