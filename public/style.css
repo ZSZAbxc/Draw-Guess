@@ -459,6 +459,12 @@ button:disabled { opacity: .5; cursor: not-allowed; filter: grayscale(.5); }
   word-break: break-word;
 }
 .ydig-msg.system { color: var(--accent-2); text-align: center; font-size: 16px; background: transparent; }
+.ydig-msg.round-info {
+  position: sticky; top: 0; z-index: 2;
+  background: rgba(18, 12, 36, .96);
+  border-bottom: 1px solid rgba(255,255,255,.12);
+  font-weight: bold;
+}
 .ydig-msg.correct { color: var(--gold); background: rgba(247,183,49,.13); font-weight: bold; }
 .ydig-msg.wrong { color: #ff9f9f; }
 .ydig-guess-input-row { display: flex; border-top: 1px solid rgba(255,255,255,.1); }

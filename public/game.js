@@ -1163,7 +1163,8 @@ function connectSocket() {
     dom.ydigGuessList.innerHTML = '';
     initYdigCanvas();
     clearYdigCanvas();
-    addYdigMsg(`答案 ${data.wordLength} 个字${data.hint ? `，提示：${data.hint}` : ''}`, 'system');
+    // 轮次信息固定在消息框顶部，不会被后续猜词消息顶出视野
+    addYdigMsg(`答案 ${data.wordLength} 个字${data.hint ? `，提示：${data.hint}` : ''}`, 'system round-info');
     dom.ydigDrawerTip.classList.add('hidden');
     if (state.ydigDraw) {
       // 画手：显示作画区（答案由 ydig_draw_start 下发）
@@ -1259,6 +1260,10 @@ function connectSocket() {
     initYdigCanvas();
     clearYdigCanvas();
     dom.ydigGuessList.innerHTML = '';
+    // 重连恢复：先把当前轮次的字数/提示固定在顶部，再回放猜词历史
+    if (data.wordLength > 0) {
+      addYdigMsg(`答案 ${data.wordLength} 个字${data.hint ? `，提示：${data.hint}` : ''}`, 'system round-info');
+    }
     (data.guesses || []).forEach(g => {
       if (g.correct) addYdigMsg(`🎉 ${g.nickname} 猜对了！得 ${g.score} 分`, 'correct');
       else addYdigMsg(`❌ ${g.nickname} 猜"${g.word}"，猜错了`, 'wrong');
